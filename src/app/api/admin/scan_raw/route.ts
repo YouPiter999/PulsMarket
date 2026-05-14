@@ -8,13 +8,12 @@ export async function GET() {
         const db = getFirestoreDb();
         const snapshot = await db.collection('listings').get();
         
-        const sapphireItems = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() as any }))
-            .filter(item => String(item.description || '').includes('Sapphire'));
+        const allItems = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() as any }));
             
         return NextResponse.json({
             total_listings: snapshot.size,
-            matches: sapphireItems
+            matches: allItems
         });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });

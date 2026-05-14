@@ -171,6 +171,56 @@ function translateListingText(text: string, targetLang: string) {
   return translated;
 }
 
+function getListingSubcategory(title: string = '', description: string = '', category: string = 'Недвижимость', price: number = 0): string {
+  const text = (title + ' ' + (description || '')).toLowerCase();
+  
+  // 1. 🙋 Сниму (I want to rent)
+  if (text.includes('сниму') || text.includes('ищу аренду') || text.includes('ищем квартиру') || text.includes('kiralık arıyorum') || text.includes('want to rent') || text.includes('looking for rent')) {
+    return 'Сниму';
+  }
+  
+  // 2. 💰 Куплю (I want to buy)
+  if (text.includes('куплю') || text.includes('ищу покупку') || text.includes('хочу купить') || text.includes('satılık arıyorum') || text.includes('want to buy') || text.includes('looking to buy')) {
+    return 'Куплю';
+  }
+
+  // 3. 🔑 Сдаю / Сдам (For rent)
+  if (
+    text.includes('сдам') || text.includes('сдаю') || text.includes('сдаётся') || text.includes('аренда') || 
+    text.includes('rent a car') || text.includes('car rental') || text.includes('kiralık') || 
+    text.includes('kiralik') || text.includes('for rent') || text.includes('прокат') ||
+    text.includes('аренду')
+  ) {
+    return 'Сдаю';
+  }
+  
+  // 4. 🏷️ Продам (For sale)
+  if (text.includes('продам') || text.includes('продаю') || text.includes('продается') || text.includes('продаётся') || text.includes('продажа') || text.includes('satılık') || text.includes('satilik') || text.includes('sale') || text.includes('for sale')) {
+    return 'Продам';
+  }
+
+  // 🔥 INTELLIGENT PRICE HEURISTIC FOR TRANSPORT 🔥
+  // Modern cars priced under 2,500 EUR/USD/GBP are absolutely monthly rentals!
+  if (category === 'Транспорт' && price > 0 && price < 2500) {
+     return 'Сдаю';
+  }
+  
+  // Context-Aware Fallback: 
+  // For Transport, most listings are sales. For Real Estate, most are rentals.
+  if (category === 'Транспорт') {
+     return 'Продам';
+  }
+  return 'Сдаю';
+}
+
+// Blackbox category mapping helper: Guarantees ANY legacy, empty or untracked classifications automatically group into "Разное"
+const KNOWN_CATEGORIES = ['Недвижимость', 'Транспорт', 'Электроника', 'Услуги', 'Работа', 'Вещи', 'Новости'];
+function resolveCategory(categoryName: string = ''): string {
+  if (!categoryName) return 'Разное';
+  if (KNOWN_CATEGORIES.includes(categoryName)) return categoryName;
+  return 'Разное';
+}
+
 export default function Home() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,6 +231,7 @@ export default function Home() {
   
   // Filtering & Search States
   const [selectedCategory, setSelectedCategory] = useState('Все');
+  const [selectedSubcategory, setSelectedSubcategory] = useState('Все');
   const [searchQuery, setSearchQuery] = useState('');
   
   const [formData, setFormData] = useState({
@@ -247,6 +298,7 @@ export default function Home() {
     { id: 'Услуги', name: lang === 'ru' ? 'Услуги' : lang === 'tr' ? 'Hizmetler' : 'Services', icon: '🛠️' },
     { id: 'Работа', name: lang === 'ru' ? 'Работа' : lang === 'tr' ? 'İş' : 'Jobs', icon: '💼' },
     { id: 'Вещи', name: lang === 'ru' ? 'Вещи' : lang === 'tr' ? 'Eşyalar' : 'Goods', icon: '👕' },
+    { id: 'Разное', name: lang === 'ru' ? 'Разное' : lang === 'tr' ? 'Diğer' : 'Misc', icon: '📦' },
     { id: 'Новости', name: lang === 'ru' ? 'Новости' : lang === 'tr' ? 'Haberler' : 'News', icon: '📢' },
   ];
 
@@ -367,19 +419,22 @@ export default function Home() {
       {/* Categories Grid (Properly Aligned) */}
       <div className="bg-white py-6 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-4 justify-items-center">
+          <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-9 gap-4 justify-items-center">
             {categories.map((cat) => {
               const isActive = selectedCategory === cat.id;
               // Live count for active category visibility
               const count = listings.filter(l => {
                 const sameCountry = (l.country || 'Северный Кипр').toLowerCase() === selectedCountry.toLowerCase();
-                return sameCountry && (cat.id === 'Все' ? true : l.category === cat.id);
+                return sameCountry && (cat.id === 'Все' ? true : resolveCategory(l.category) === cat.id);
               }).length;
 
               return (
                 <button 
                   key={cat.id} 
-                  onClick={() => setSelectedCategory(cat.id)}
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setSelectedSubcategory('Все');
+                  }}
                   className="flex flex-col items-center gap-2 group w-full transition-all relative"
                 >
                   <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-sm transition-all duration-300 ${isActive ? 'bg-blue-600 text-white scale-110 shadow-blue-200 shadow-lg' : 'bg-[#f2f4f7] group-hover:bg-blue-50 group-hover:scale-105'}`}>
@@ -393,7 +448,205 @@ export default function Home() {
               );
             })}
           </div>
+
+          {/* Dynamic Subcategories for Real Estate & Transport */}
+          {(selectedCategory === 'Недвижимость' || selectedCategory === 'Транспорт') && (
+            <div className="mt-8 pt-6 border-t border-gray-100 flex flex-wrap gap-3 justify-center">
+              {['Все', 'Сдаю', 'Сниму', 'Куплю', 'Продам'].map((sub) => {
+                const isSubActive = selectedSubcategory === sub;
+                // Subcategory live count within selected country and correct category
+                const subCount = listings.filter(l => {
+                  const sameCountry = (l.country || 'Северный Кипр').toLowerCase() === selectedCountry.toLowerCase();
+                  if (!sameCountry || l.category !== selectedCategory) return false;
+                  if (sub === 'Все') return true;
+                  return getListingSubcategory(l.title, l.description, l.category, Number(l.price || 0)) === sub;
+                }).length;
+
+                const iconMap: Record<string, string> = {
+                  'Все': '✨',
+                  'Сдаю': '🔑',
+                  'Сниму': '🙋',
+                  'Куплю': '💰',
+                  'Продам': '🏷️'
+                };
+
+                // Smart Label Override for Transport: 'Сдаю' -> 'Сдам'
+                let labelDisplay = sub;
+                if (selectedCategory === 'Транспорт' && sub === 'Сдаю') {
+                   labelDisplay = 'Сдам';
+                }
+
+                return (
+                  <button
+                    key={sub}
+                    onClick={() => setSelectedSubcategory(sub)}
+                    className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-2.5 shadow-sm border ${
+                      isSubActive 
+                        ? 'bg-blue-50 border-blue-300 text-blue-700 ring-2 ring-blue-100/50 shadow-md scale-105' 
+                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300 hover:shadow'
+                    }`}
+                  >
+                    <span className="text-base">{iconMap[sub]}</span>
+                    <span>{labelDisplay}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-md ${isSubActive ? 'bg-blue-600 text-white font-black' : 'bg-gray-100 text-gray-500 font-semibold'}`}>
+                      {subCount}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Trust & Safety Metrics Banner */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50/60 border border-indigo-100 rounded-3xl p-6 md:p-8 shadow-sm flex flex-col lg:flex-row items-stretch gap-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-100/40 rounded-full blur-3xl -z-10 transform translate-x-1/3 -translate-y-1/3"></div>
+          
+          {/* Left Text Highlight */}
+          <div className="flex-1 flex flex-col justify-center">
+            <div className="inline-flex items-center gap-2 bg-indigo-600/10 text-indigo-700 px-3.5 py-1.5 rounded-full text-xs font-black tracking-wider uppercase w-fit mb-4 border border-indigo-200/50">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-500 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600"></span>
+              </span>
+              {lang === 'ru' ? 'Умный парсинг рынка' : lang === 'tr' ? 'Akıllı Piyasa Taraması' : 'Smart Market Scraper'}
+            </div>
+            <h2 className="text-2xl md:text-3xl font-black text-slate-900 leading-tight tracking-tight">
+              {lang === 'ru' ? (
+                <>Экономия времени <br className="hidden md:block" />и полная безопасность 🛡️</>
+              ) : lang === 'tr' ? (
+                <>Zaman Tasarrufu <br className="hidden md:block" />ve Güvenlik 🛡️</>
+              ) : (
+                <>Save Time <br className="hidden md:block" />& Stay Safe 🛡️</>
+              )}
+            </h2>
+            <p className="mt-3 text-sm text-slate-600 font-medium leading-relaxed max-w-md">
+              {lang === 'ru' 
+                ? 'Наш ИИ-модератор круглосуточно мониторит десятки крупнейших каналов за вас, публикуя только проверенные и чистые предложения.' 
+                : lang === 'tr' 
+                ? 'Yapay zeka moderatörümüz sizin için düzinelerce grubu 7/24 izler, yalnızca temiz ve doğrulanmış teklifleri yayınlar.' 
+                : 'Our AI moderator monitors dozens of active channels for you 24/7, publishing only verified, clean offers.'}
+            </p>
+          </div>
+
+          {/* Right Stats Cards */}
+          <div className="flex-[1.8] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Card 1 */}
+            <div className="bg-white/80 backdrop-blur-md border border-white p-5 rounded-2xl shadow-sm flex flex-col gap-3">
+              <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center text-xl shadow-sm">
+                📱
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-900">
+                  {lang === 'ru' ? '50+ Групп Telegram' : lang === 'tr' ? '50+ Telegram Grubu' : '50+ Telegram Groups'}
+                </h4>
+                <p className="text-xs text-slate-500 font-medium mt-1.5 leading-normal">
+                  {lang === 'ru' 
+                    ? 'Больше нет нужды листать десятки чатов и тратить часы времени. Все собрано в одном месте!' 
+                    : lang === 'tr' 
+                    ? 'Onlarca grubu gezmeye gerek yok. Her şey tek bir yerde toplandı!' 
+                    : 'No need to browse dozens of chats manually. Everything is unified in a single source!'}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 2 */}
+            <div className="bg-white/80 backdrop-blur-md border border-white p-5 rounded-2xl shadow-sm flex flex-col gap-3">
+              <div className="w-10 h-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center text-xl shadow-sm">
+                🚫
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-900">
+                  {lang === 'ru' ? 'Без Мусора и Спама' : lang === 'tr' ? 'Çöp ve Spam Yok' : 'No Trash or Spam'}
+                </h4>
+                <p className="text-xs text-slate-500 font-medium mt-1.5 leading-normal">
+                  {lang === 'ru' 
+                    ? 'Объявления без цены или со скрытым продавцом автоматически блокируются ради вашей безопасности!' 
+                    : lang === 'tr' 
+                    ? 'Fiyatı bulunmayan veya satıcı adı gizli olan ilanlar güvenliğiniz için engellenir!' 
+                    : 'Listings without a price or with hidden seller profiles are automatically blocked for your safety!'}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 3 */}
+            <div className="bg-white/80 backdrop-blur-md border border-white p-5 rounded-2xl shadow-sm flex flex-col gap-3">
+              <div className="w-10 h-10 bg-orange-500 text-white rounded-xl flex items-center justify-center text-xl shadow-sm">
+                🔥
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-900">
+                  {lang === 'ru' ? 'Актуальность 9 Дней' : lang === 'tr' ? '9 Günlük Güncellik' : '9-Day Freshness'}
+                </h4>
+                <p className="text-xs text-slate-500 font-medium mt-1.5 leading-normal">
+                  {lang === 'ru' 
+                    ? 'Все посты и новости старше 9 дней автоматически удаляются. Вы видите только живой и свежий рынок!' 
+                    : lang === 'tr' 
+                    ? '9 günden eski olan tüm ilanlar ve haberler otomatik olarak silinir. Canlı piyasayı görürsünüz!' 
+                    : 'All postings and news older than 9 days are purged automatically. You see a fresh market!'}
+                </p>
+              </div>
+            </div>
+
+            {/* Card 4 */}
+            <div className="bg-white/80 backdrop-blur-md border border-white p-5 rounded-2xl shadow-sm flex flex-col gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-xl flex items-center justify-center text-xl shadow-sm">
+                👑
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-900">
+                  {lang === 'ru' ? 'Всегда Сверху' : lang === 'tr' ? 'Her Zaman Üstte' : 'Always on Top'}
+                </h4>
+                <p className="text-xs text-slate-500 font-medium mt-1.5 leading-normal">
+                  {lang === 'ru' ? (
+                    <>Все объявления из официального канала <a href="https://t.me/NorthCyprus_Island" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold">@NorthCyprus_Island</a> автоматически закрепляются в топе сайта!</>
+                  ) : lang === 'tr' ? (
+                    <>Resmi <a href="https://t.me/NorthCyprus_Island" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold">@NorthCyprus_Island</a> kanalındaki tüm ilanlar otomatik olarak listenin en üstünde yer alır!</>
+                  ) : (
+                    <>All listings from the official <a href="https://t.me/NorthCyprus_Island" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-bold">@NorthCyprus_Island</a> channel are automatically pinned at the top!</>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SaaS Alert Subscription Premium Banner */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+        <Link 
+          href="https://t.me/BotHelpG_bot?start=alerts"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group block w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white p-5 rounded-2xl shadow-lg transition-all duration-300 hover:-translate-y-1"
+        >
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4 text-left">
+              <div className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center text-3xl animate-pulse group-hover:animate-none">
+                🔔
+              </div>
+              <div>
+                <h3 className="text-lg font-black flex items-center gap-2">
+                  {lang === 'ru' ? 'Мгновенные уведомления в Telegram' : lang === 'tr' ? 'Telegram Anında Bildirimler' : 'Instant Telegram Notifications'}
+                  <span className="bg-yellow-400 text-blue-950 text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wider animate-bounce group-hover:animate-none shadow-sm">99 ⭐</span>
+                </h3>
+                <p className="text-sm text-blue-100 font-medium mt-0.5">
+                  {lang === 'ru' ? `Отслеживайте ${selectedCategory === 'Все' ? 'новые товары' : selectedCategory} в реальном времени! Умные фильтры доступны после активации.` 
+                   : lang === 'tr' ? 'İlanları gerçek zamanlı takip edin! Gelişmiş filtreler aktivasyondan sonra kullanılabilir.' 
+                   : 'Track listings in real-time! Custom smart filters are unlocked after activation.'}
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 bg-white text-blue-700 px-6 py-3 rounded-xl font-black text-sm group-hover:bg-blue-50 transition-all shadow-md flex items-center gap-2">
+              {lang === 'ru' ? 'Включить за 99 звёзд' : lang === 'tr' ? '99 Yıldız İle Başlat' : 'Enable for 99 Stars'}
+              <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </Link>
       </div>
 
       {/* Main Content */}
@@ -436,9 +689,15 @@ export default function Home() {
             // Apply Category Sidebar Filter
             const matchesCategory = selectedCategory === 'Все' 
               ? true 
-              : item.category === selectedCategory;
+              : resolveCategory(item.category) === selectedCategory;
 
-            return matchesCountry && matchesSearch && matchesCategory;
+            // Apply Dynamic Subcategory Filter (Handles both Real Estate and Transport)
+            const isSubcategoryTracked = selectedCategory === 'Недвижимость' || selectedCategory === 'Транспорт';
+            const matchesSubcategory = (isSubcategoryTracked && selectedSubcategory !== 'Все')
+              ? getListingSubcategory(item.title, item.description, item.category, Number(item.price || 0)) === selectedSubcategory
+              : true;
+
+            return matchesCountry && matchesSearch && matchesCategory && matchesSubcategory;
           });
 
           // Differentiate listings strictly for general view splits and sort by PRIORITY LEVEL then DATE
@@ -447,9 +706,10 @@ export default function Home() {
             .filter(item => selectedCategory === 'Новости' ? true : item.category !== 'Новости')
             .sort((a, b) => {
                 const getScore = (listing: any) => {
-                   if (!listing.is_priority) return 0;
                    const src = String(listing.source || '').toLowerCase();
-                   if (src.includes('northcyprus_island')) return 2; // Supreme Tier
+                   const isSupreme = src.includes('northcyprus_island');
+                   if (!listing.is_priority && !isSupreme) return 0;
+                   if (isSupreme) return 2; // Supreme Tier
                    return 1; // Secondary Admin Tier
                 };
                 
@@ -503,7 +763,7 @@ export default function Home() {
                             </button>
                           </div>
                           {/* 🔥 PREMIUM PRIORITY BADGE LOGIC 🔥 */}
-                          {item.is_priority ? (() => {
+                          {(item.is_priority || String(item.source || '').toLowerCase().includes('northcyprus_island')) ? (() => {
                              const cleanName = (item.source || '')
                                .replace(/Telegram\s\(@/gi, '')
                                .replace(/\)/gi, '')

@@ -80,14 +80,39 @@ export async function GET() {
            await doc.ref.update(updates);
        }
 
-       // 🚨 NEW ABSOLUTE FILTER: Wipe ANY non-news item missing valid contacts!
-       if (data.category !== 'Новости') {
-           const rawBody = ((data.title || '') + ' ' + (data.description || '')).toLowerCase();
-           const hasMention = rawBody.includes('@') || rawBody.includes('t.me/');
-           // Detect contiguous sequences of digits (at least 7) that look like actual phones!
-           const hasPhone = /\+?\d{7,}/.test(rawBody.replace(/\s+/g, ''));
+        // 🚨 NEW ABSOLUTE FILTER: Wipe ANY non-news item missing valid contacts!
+        if (data.category !== 'Новости') {
+            const officialUsernames = [
+              'adscyprus', 'autoncy', 'autopazar', 'bazaranetncy', 'carsrentcy', 'chatscyprusnorth', 'cyprlife',
+              'cyprus_adaptacia', 'cyprus_house', 'cyprus_off', 'cyprus_topchat', 'cypruselectric', 'freelanc_rabota',
+              'freelance_chat_birzha', 'frilancru', 'frilanser_vacansii', 'go5gorch', 'kibris_cyprus', 'kipr_chat',
+              'kipr_nedvizhimost', 'kiprx', 'kvartiry_cyprus', 'moneyincyprus', 'nedvizhka_ciprus', 'nedvizhkancy',
+              'news_cyprus_north', 'north_cypruschat', 'northcyprus_island', 'northcyprusbest', 'northcyprusok',
+              'onerealestatecyprus', 'piterspbnedvizimost', 'poputkancy', 'presscodesupportru', 'realestate_cyprus_limassol',
+              'realtycyprus1', 'russiansin_northcyprus', 'severniy_kipr', 'severnykipr', 'severnyy_kipr_chat',
+              'sharabara2026', 'travellerpa', 'ukraincy_na_kipri', 'utfejvqjuzrlzdli', 'venta_cyprus',
+              'bothelpg_bot', 'killspams'
+            ];
+
+            // Strip official channel promos and source group mentions to perform an honest check for actual individual contacts
+            let cleanBody = ((data.title || '') + ' ' + (data.description || '')).toLowerCase();
+            officialUsernames.forEach(username => {
+                const regex1 = new RegExp(`@${username}`, 'g');
+                const regex2 = new RegExp(`t.me\\/${username}`, 'g');
+                cleanBody = cleanBody.replace(regex1, '').replace(regex2, '');
+            });
+
+            const hasMention = cleanBody.includes('@') || cleanBody.includes('t.me/');
+            // Detect contiguous sequences of digits (at least 7) that look like actual phones!
+            const hasPhone = /\+?\d{7,}/.test(cleanBody.replace(/\s+/g, ''));
+            
+            // 🔥 SERGEY'S MANDATORY RULE: If seller has a public profile username, we MUST publish and NEVER delete (even without text contacts!)
+            const rawUser = String(data.username || '').toLowerCase().replace('tg_', '');
+            const hasProfile = rawUser && 
+                               !officialUsernames.includes(rawUser) && 
+                               !/^\d+$/.test(rawUser);
            
-           if (!hasMention && !hasPhone) {
+           if (!hasMention && !hasPhone && !hasProfile) {
                console.log(`🚨 Deleting Item Missing Contacts: ${listingId}`);
                await doc.ref.delete();
                continue; // Done!
@@ -112,6 +137,7 @@ export async function GET() {
        let isDup = false;
        if (fingerprint && fingerprint.length > 10 && seenMessages.has(fingerprint)) isDup = true;
        if (extId && seenMessages.has(`ID_${extId}`)) isDup = true;
+       if (data.image_url && seenMessages.has(`IMG_${data.image_url}`)) isDup = true;
        
        if (isDup) {
           console.log(`🗑️ Deleting Duplicate: ${listingId}`);
@@ -120,6 +146,7 @@ export async function GET() {
        } else {
           if (fingerprint) seenMessages.add(fingerprint);
           if (extId) seenMessages.add(`ID_${extId}`);
+          if (data.image_url) seenMessages.add(`IMG_${data.image_url}`);
        }
     }
         return NextResponse.json({

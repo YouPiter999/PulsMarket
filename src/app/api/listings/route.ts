@@ -55,15 +55,24 @@ export async function POST(request: Request) {
         }, { status: 400 });
     }
 
-    // Read current data from Firestore to check duplicates (limit to recent 20)
-    const snapshot = await db.collection('listings').orderBy('createdAt', 'desc').limit(20).get();
+    // Read current data from Firestore to check duplicates (limit to recent 60 to cover large batches)
+    const snapshot = await db.collection('listings').orderBy('createdAt', 'desc').limit(60).get();
     const listings = snapshot.docs.map(doc => doc.data());
 
-    // Check for duplicates (same title and price)
+    // 🛡️ IRON CLAD DUPLICATE PROTECTION 🛡️
     const isDuplicate = listings.some((l: any) => {
+        // 1. Exact Title and Price Match
         const cleanTitle1 = l.title.toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
         const cleanTitle2 = data.title.toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
-        return cleanTitle1 === cleanTitle2 && String(l.price) === String(data.price);
+        const titlePriceMatch = (cleanTitle1 === cleanTitle2 && String(l.price) === String(data.price));
+        
+        // 2. EXACT IMAGE MATCH (Crucial for visual reposts!)
+        const imageMatch = data.image_url && l.image_url && data.image_url === l.image_url;
+        
+        // 3. EXTERNAL ID MATCH
+        const extIdMatch = data.external_id && l.external_id && String(data.external_id) === String(l.external_id);
+
+        return titlePriceMatch || imageMatch || extIdMatch;
     });
 
     const sourceStr = String(data.source || '').toLowerCase();

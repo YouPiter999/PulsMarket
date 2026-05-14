@@ -133,6 +133,15 @@ export default function ProfilePage() {
                   )}
                 </h1>
                 <p className="text-gray-500 font-medium">@{user?.username || 'PulseUser'}</p>
+                
+                {/* Live Seller Star Rating in Profile */}
+                {user?.rating_avg > 0 && (
+                  <div className="flex items-center gap-1 mt-2 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 w-fit">
+                    <span className="text-amber-500 text-xs">★</span>
+                    <span className="text-gray-800 font-black text-xs tracking-tight">{user.rating_avg.toFixed(1)}</span>
+                    <span className="text-gray-400 font-bold text-[10px] tracking-tight ml-0.5">({user.rating_count} {user.rating_count === 1 ? 'отзыв' : [2,3,4].includes(user.rating_count % 10) && ![12,13,14].includes(user.rating_count % 100) ? 'отзыва' : 'отзывов'})</span>
+                  </div>
+                )}
               </div>
               
               <div className="flex gap-3">
@@ -171,14 +180,14 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Deals (Placeholder for next sprint) */}
-            <div className="p-8 flex items-center gap-5 group transition-all duration-300 hover:bg-white opacity-75">
+            {/* 🤝 Live Real-time Deals Record */}
+            <div className="p-8 flex items-center gap-5 group transition-all duration-300 hover:bg-white">
               <div className="w-14 h-14 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center text-3xl shadow-lg shadow-orange-500/20 transform group-hover:scale-110 transition-transform">
                 🤝
               </div>
               <div>
                 <p className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-0.5">Сделки</p>
-                <p className="text-2xl font-black text-gray-900">0</p>
+                <p className="text-2xl font-black text-gray-900">{user?.deals_count || 0}</p>
               </div>
             </div>
           </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 
 interface Listing {
   id: string;
@@ -74,6 +75,68 @@ export default function ListingDetail() {
     return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
   }
 
+  // Rich Text Formatter: Automatically turns @mentions and Links into Clickable UI Tags
+  function renderDescription(text: string) {
+    if (!text) return null;
+    
+    // Captures: @usernames, https://... links, and t.me/... paths
+    const combinedPattern = /((?:@[a-zA-Z0-9_]{4,32})|(?:https?:\/\/[^\s]+)|(?:t\.me\/[^\s]+))/gi;
+    const parts = text.split(combinedPattern);
+    
+    return parts.map((part, i) => {
+      if (!part) return null;
+      
+      // 1. Handle @mentions
+      if (part.startsWith('@')) {
+        const username = part.slice(1);
+        return (
+          <a 
+            key={i} 
+            href={`https://t.me/${username}`}
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 hover:underline font-bold bg-blue-50/70 px-1.5 py-0.5 rounded-md transition-all duration-200 inline-flex items-center gap-0.5"
+          >
+            {part}
+          </a>
+        );
+      }
+      
+      // 2. Handle t.me/ direct pathing
+      if (part.toLowerCase().startsWith('t.me/')) {
+        return (
+          <a 
+            key={i} 
+            href={`https://${part}`}
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 hover:underline font-semibold transition-colors duration-200"
+          >
+            {part}
+          </a>
+        );
+      }
+      
+      // 3. Handle HTTP/HTTPS urls
+      if (part.toLowerCase().startsWith('http')) {
+        return (
+          <a 
+            key={i} 
+            href={part}
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 hover:underline font-semibold break-all transition-colors duration-200"
+          >
+            {part}
+          </a>
+        );
+      }
+      
+      // 4. Normal Text: Strip raw telegram asterisks (*) for clean layout
+      return part.replace(/\*/g, '');
+    });
+  }
+
   if (loading) {
     return <div className="min-h-screen bg-[#f2f4f7] flex items-center justify-center">Загрузка...</div>;
   }
@@ -81,28 +144,50 @@ export default function ListingDetail() {
   if (!listing) {
     return <div className="min-h-screen bg-[#f2f4f7] flex flex-col items-center justify-center">
       <h1 className="text-2xl font-bold mb-4">Объявление не найдено</h1>
-      <button onClick={() => router.back()} className="text-blue-600 hover:underline">Вернуться назад</button>
+      <Link href="/" className="text-blue-600 hover:underline font-bold mt-2">Вернуться на главную</Link>
     </div>;
   }
 
   // Smart Contact Resolver:
-  // Try to extract an ACTUAL direct username from text FIRST!
-  const desc = (listing.description || '').toLowerCase();
-  const mentionMatch = (listing.description || '').match(/@([a-zA-Z0-9_]{4,32})/);
-  const extractedUser = mentionMatch ? mentionMatch[1] : null;
-
   const isTelegram = listing.username && listing.username.startsWith('tg_');
   const cleanUsername = isTelegram ? listing.username.replace('tg_', '') : '';
   const isNumeric = /^\d+$/.test(cleanUsername);
   
-  // PRIORITY 1: Extracted Direct User, PRIORITY 2: Original Group Thread Link
+  // Blacklist of official system usernames & monitored source groups that must NEVER be parsed as individual sellers
+  const officialUsernames = [
+    'adscyprus', 'autoncy', 'autopazar', 'bazaranetncy', 'carsrentcy', 'chatscyprusnorth', 'cyprlife',
+    'cyprus_adaptacia', 'cyprus_house', 'cyprus_off', 'cyprus_topchat', 'cypruselectric', 'freelanc_rabota',
+    'freelance_chat_birzha', 'frilancru', 'frilanser_vacansii', 'go5gorch', 'kibris_cyprus', 'kipr_chat',
+    'kipr_nedvizhimost', 'kiprx', 'kvartiry_cyprus', 'moneyincyprus', 'nedvizhka_ciprus', 'nedvizhkancy',
+    'news_cyprus_north', 'north_cypruschat', 'northcyprus_island', 'northcyprusbest', 'northcyprusok',
+    'onerealestatecyprus', 'piterspbnedvizimost', 'poputkancy', 'presscodesupportru', 'realestate_cyprus_limassol',
+    'realtycyprus1', 'russiansin_northcyprus', 'severniy_kipr', 'severnykipr', 'severnyy_kipr_chat',
+    'sharabara2026', 'travellerpa', 'ukraincy_na_kipri', 'utfejvqjuzrlzdli', 'venta_cyprus',
+    'bothelpg_bot', 'killspams'
+  ];
+  
+  // 1. Try to extract an ACTUAL direct username from text as backup, ignoring our injected promo tag
+  const matches = (listing.description || '').match(/@([a-zA-Z0-9_]{4,32})/g) || [];
+  const extractedUser = matches.map(m => m.slice(1)).find(u => !officialUsernames.includes(u.toLowerCase())) || null;
+
+  // 2. Check if database username is just our group name fallback
+  const isGroupFallback = officialUsernames.includes(cleanUsername.toLowerCase()) || isNumeric;
+
+  // 3. Resolve final display and target link
+  const finalSeller = extractedUser 
+    ? `@${extractedUser}` 
+    : (!isGroupFallback && cleanUsername ? `@${cleanUsername}` : null);
+
+  // Link priority: 1. Safe extracted user, 2. Safe db user, 3. Fallback group thread
   const tgLink = extractedUser 
      ? `https://t.me/${extractedUser}` 
-     : (isTelegram 
-        ? (isNumeric 
-            ? `https://t.me/c/${cleanUsername}/${listing.external_id || ''}`
-            : `https://t.me/${cleanUsername}/${listing.external_id || ''}`)
-        : '');
+     : (!isGroupFallback && cleanUsername
+        ? `https://t.me/${cleanUsername}`
+        : (isTelegram 
+            ? (isNumeric 
+                ? `https://t.me/c/${cleanUsername}/${listing.external_id || ''}`
+                : `https://t.me/${cleanUsername}/${listing.external_id || ''}`)
+            : ''));
     
   const youtubeEmbed = getYouTubeEmbedUrl(listing.video_url || '');
   const allImages = listing.image_url ? [listing.image_url, ...(listing.additional_images || [])] : [];
@@ -110,12 +195,14 @@ export default function ListingDetail() {
   return (
     <div className="min-h-screen bg-[#f2f4f7] font-sans">
       {/* Header */}
-      <nav className="bg-white border-b sticky top-0 z-50 py-4 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-4">
-           <button onClick={() => router.back()} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
-              ⬅️
-           </button>
-           <span className="text-2xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">PulseMarket</span>
+      <nav className="bg-white border-b sticky top-0 z-50 py-3.5 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center">
+           <Link 
+              href="/" 
+              className="inline-flex items-center gap-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-lg px-6 py-3 rounded-xl hover:shadow-xl hover:-translate-y-1 active:translate-y-0 transition-all shadow-md tracking-tight border border-blue-400/20"
+           >
+              <span className="text-xl animate-pulse">🏘️</span> PulseMarket — Все объявления
+           </Link>
         </div>
       </nav>
 
@@ -180,10 +267,10 @@ export default function ListingDetail() {
                     <span className="text-xl">📍</span>
                     <span className="font-medium">{listing.location}</span>
                  </div>
-                 {(extractedUser || (listing.username && !listing.username.toLowerCase().startsWith('tg_') && !listing.username.toLowerCase().includes('telegram'))) && (
+                 {finalSeller && (
                     <div className="flex items-center gap-3 text-gray-600">
                        <span className="text-xl">👤</span>
-                       <span className="font-medium">Продавец: {extractedUser ? `@${extractedUser}` : listing.username}</span>
+                       <span className="font-medium">Продавец: {finalSeller}</span>
                     </div>
                  )}
                  <div className="flex items-center gap-3 text-gray-600">
@@ -261,7 +348,7 @@ export default function ListingDetail() {
         {listing.description && (
           <div className="mt-8 bg-white p-8 rounded-2xl shadow-sm">
             <h2 className="text-xl font-bold mb-4">Описание</h2>
-            <p className="text-gray-700 whitespace-pre-wrap">{listing.description}</p>
+            <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{renderDescription(listing.description)}</p>
           </div>
         )}
 
@@ -302,6 +389,15 @@ export default function ListingDetail() {
               </div>
            </div>
         )}
+        {/* Footer Catalog CTA */}
+        <div className="flex justify-center mt-12 mb-16">
+           <Link 
+              href="/" 
+              className="inline-flex items-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xl px-12 py-5 rounded-2xl hover:shadow-2xl hover:-translate-y-1.5 active:translate-y-0 transition-all duration-300 shadow-xl tracking-tight border border-blue-400/20"
+           >
+              <span className="text-2xl animate-pulse">🏘️</span> PulseMarket — Все объявления
+           </Link>
+        </div>
       </main>
     </div>
   );
