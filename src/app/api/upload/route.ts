@@ -1,4 +1,12 @@
 import { NextResponse } from 'next/server';
+import { getStorage } from 'firebase-admin/storage';
+import { getApps, initializeApp } from 'firebase-admin/app';
+
+// Ensure Firebase Admin is initialized
+const apps = getApps();
+if (!apps.length) {
+  initializeApp();
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -11,11 +19,70 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
-    // Convert File to standard Buffer/Blob for the fetch relay
     const bytes = await file.arrayBuffer();
-    const blob = new Blob([bytes], { type: file.type });
+    const buffer = Buffer.from(bytes);
 
-    // Create payload for Catbox EXACTLY like the Python script
+    // 1. Try Firebase Storage (Primary - Stable & Self-hosted)
+    try {
+      const storage = getStorage();
+      const bucket = storage.bucket('pulsemarket-group-app.appspot.com');
+      const uniqueName = `listings/${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${file.name || 'upload.jpg'}`;
+      const bucketFile = bucket.file(uniqueName);
+
+      await bucketFile.save(buffer, {
+        metadata: {
+          contentType: file.type || 'image/jpeg',
+          metadata: {
+            firebaseStorageDownloadTokens: Math.random().toString(36).substring(2, 15) // token for compatibility
+          }
+        }
+      });
+
+      // Make the file publicly accessible
+      try {
+        await bucketFile.makePublic();
+      } catch (pubErr) {
+        console.warn('Could not make file public, attempting signed URL or default public access:', pubErr);
+      }
+
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${bucketFile.name}`;
+      console.log('Successfully uploaded to Firebase Storage:', publicUrl);
+
+      return NextResponse.json({
+        success: true,
+        url: publicUrl
+      });
+    } catch (storageError) {
+      console.error('Firebase Storage failed, falling back to ImgBB:', storageError);
+    }
+
+    // 2. Fallback to ImgBB (High compatibility uploader)
+    try {
+      const base64Str = buffer.toString('base64');
+      const imgbbForm = new FormData();
+      imgbbForm.append('key', 'e53d3573d4e462b9048467002db84912');
+      imgbbForm.append('image', base64Str);
+
+      const imgbbResponse = await fetch('https://api.imgbb.com/1/upload', {
+        method: 'POST',
+        body: imgbbForm
+      });
+
+      const resData = await imgbbResponse.json();
+      if (imgbbResponse.status === 200 && resData && resData.data && resData.data.url) {
+        console.log('Successfully uploaded to ImgBB:', resData.data.url);
+        return NextResponse.json({
+          success: true,
+          url: resData.data.url
+        });
+      }
+      console.warn('ImgBB upload fallback failed:', resData);
+    } catch (imgbbError) {
+      console.error('ImgBB upload fallback error:', imgbbError);
+    }
+
+    // 3. Fallback to Catbox (Relayed from server side to bypass VPS IP blocks)
+    const blob = new Blob([bytes], { type: file.type });
     const catboxForm = new FormData();
     catboxForm.append('reqtype', 'fileupload');
     catboxForm.append('fileToUpload', blob, file.name || 'upload.jpg');
@@ -34,7 +101,7 @@ export async function POST(request: Request) {
         url: trimmed
       });
     } else {
-      return NextResponse.json({ error: 'Catbox rejected file', detail: trimmed }, { status: 500 });
+      return NextResponse.json({ error: 'Catbox and Firebase Storage both failed', detail: trimmed }, { status: 500 });
     }
 
   } catch (error: any) {

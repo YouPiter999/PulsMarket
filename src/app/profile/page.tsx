@@ -10,10 +10,21 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [myListings, setMyListings] = useState<any[]>([]);
   const [listingsLoading, setListingsLoading] = useState(true);
+  const [activeModal, setActiveModal] = useState<'VERIFY' | 'SETTINGS' | 'SUPPORT' | null>(null);
 
   useEffect(() => {
     const loadProfile = async () => {
-      const stored = localStorage.getItem('pulse_user');
+      let stored = localStorage.getItem('pulse_user');
+      if (!stored) {
+        const match = document.cookie.match(/(^| )pulse_user=([^;]+)/);
+        if (match) {
+          try {
+            stored = decodeURIComponent(match[2]);
+            localStorage.setItem('pulse_user', stored);
+          } catch (e) {}
+        }
+      }
+      
       if (!stored) {
         router.push('/login');
         return;
@@ -33,6 +44,7 @@ export default function ProfilePage() {
           if (data.success) {
             setUser(data.user);
             localStorage.setItem('pulse_user', JSON.stringify(data.user));
+            document.cookie = `pulse_user=${encodeURIComponent(JSON.stringify(data.user))}; path=/; max-age=2592000; SameSite=Lax`;
           }
         }
       } catch (err) {
@@ -46,11 +58,12 @@ export default function ProfilePage() {
        setListingsLoading(true);
        try {
          const res = await fetch('/api/listings');
-         const allListings = await res.json();
+         const data = await res.json();
+         const listingsArray = Array.isArray(data) ? data : (data.listings || []);
          // Match either user ID or telegram username derived names
          const userKey = targetUser.username ? targetUser.username.toLowerCase() : '';
          
-         const filtered = allListings.filter((item: any) => {
+         const filtered = listingsArray.filter((item: any) => {
             const itemUser = (item.username || '').toLowerCase();
             return itemUser.includes(userKey) || itemUser === String(targetUser.telegram_id);
          });
@@ -68,6 +81,7 @@ export default function ProfilePage() {
 
   const handleLogout = () => {
     localStorage.removeItem('pulse_user');
+    document.cookie = "pulse_user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     router.push('/');
   };
 
@@ -261,29 +275,151 @@ export default function ProfilePage() {
                  </span>
                </div>
                <p className="relative z-10 text-xs text-indigo-100 mb-5 leading-relaxed opacity-90">Пройдите расширенную верификацию и получите премиум-бейдж, который увеличивает доверие покупателей на 80%.</p>
-               <button className="relative z-10 w-full bg-white text-indigo-700 text-xs font-black py-3 rounded-xl shadow-lg hover:bg-gray-100 transition-all active:scale-95 cursor-not-allowed opacity-90 flex items-center justify-center gap-2">
-                 🚀 Открыть верификатор
-               </button>
-             </div>
+               <button 
+                  onClick={() => setActiveModal('VERIFY')}
+                  className="relative z-10 w-full bg-white text-indigo-700 text-xs font-black py-3 rounded-xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 flex items-center justify-center gap-2 hover:shadow-white/20 cursor-pointer"
+                >
+                  🚀 Открыть верификатор
+                </button>
+              </div>
 
-             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between group hover:border-blue-300 transition-colors cursor-pointer">
-                <div className="flex items-center gap-3">
-                   <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-lg group-hover:bg-blue-50 transition-colors">⚙️</div>
-                   <span className="text-sm font-bold text-gray-700">Настройки</span>
-                </div>
-                <span className="text-gray-400 group-hover:text-blue-600 transition-colors">→</span>
-             </div>
+              <div 
+                onClick={() => setActiveModal('SETTINGS')}
+                className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between group hover:border-blue-300 transition-colors cursor-pointer hover:-translate-y-0.5 transition-all duration-200"
+              >
+                 <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-lg group-hover:bg-blue-50 transition-colors">⚙️</div>
+                    <span className="text-sm font-bold text-gray-700">Настройки</span>
+                 </div>
+                 <span className="text-gray-400 group-hover:text-blue-600 transition-colors">→</span>
+              </div>
 
-             <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between group hover:border-blue-300 transition-colors cursor-pointer">
-                <div className="flex items-center gap-3">
-                   <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-lg group-hover:bg-blue-50 transition-colors">❓</div>
-                   <span className="text-sm font-bold text-gray-700">Поддержка</span>
-                </div>
-                <span className="text-gray-400 group-hover:text-blue-600 transition-colors">→</span>
-             </div>
+              <div 
+                onClick={() => setActiveModal('SUPPORT')}
+                className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between group hover:border-blue-300 transition-colors cursor-pointer hover:-translate-y-0.5 transition-all duration-200"
+              >
+                 <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-lg group-hover:bg-blue-50 transition-colors">❓</div>
+                    <span className="text-sm font-bold text-gray-700">Поддержка</span>
+                 </div>
+                 <span className="text-gray-400 group-hover:text-blue-600 transition-colors">→</span>
+              </div>
           </div>
         </div>
       </main>
+      {/* Unified Profile Modal Overlays */}
+      {activeModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm duration-200 animate-in fade-in"
+          onClick={() => setActiveModal(null)}
+        >
+          <div 
+            className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden p-6 sm:p-8 duration-200 animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button 
+              onClick={() => setActiveModal(null)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-colors"
+            >
+              ✕
+            </button>
+
+            {activeModal === 'VERIFY' && (
+              <div className="text-center flex flex-col items-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 text-white rounded-2xl flex items-center justify-center text-3xl shadow-lg shadow-indigo-200 mb-5">
+                  🛡️
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 mb-2">Повышение уровня</h3>
+                <p className="text-sm text-slate-600 font-medium leading-relaxed mb-6">
+                  Пройдите верификацию для получения специальной галочки ✅. Это подтвердит подлинность профиля и многократно поднимет доверие клиентов к вашим лотам.
+                </p>
+                <div className="bg-blue-50 border border-blue-100/50 rounded-2xl p-4 text-left text-xs text-blue-800 mb-6 flex flex-col gap-2 font-medium w-full">
+                  <p>• 💳 <b>Шаг 1:</b> Предоставьте паспорт или ID</p>
+                  <p>• 📸 <b>Шаг 2:</b> Селфи с паспортом в руках</p>
+                  <p>• ✅ <b>Результат:</b> Статус подтверждён!</p>
+                </div>
+                <a 
+                  href="https://t.me/BotHelpG_bot?start=verify" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 hover:-translate-y-0.5 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  ✉️ Написать верификатору в Telegram
+                </a>
+              </div>
+            )}
+
+            {activeModal === 'SETTINGS' && (
+              <div className="text-left">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-12 h-12 bg-gray-100 text-slate-700 rounded-xl flex items-center justify-center text-2xl">
+                    ⚙️
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-black text-slate-900">Настройки профиля</h3>
+                    <p className="text-xs text-slate-500">Синхронизация с Telegram</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4 mb-6">
+                  <div className="bg-gray-50 border border-gray-100 p-4 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">Аккаунт на PulseMarket</p>
+                    <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      👤 {user?.first_name} {user?.last_name} 
+                      <span className="text-xs font-semibold text-slate-500">(@{user?.username})</span>
+                    </p>
+                    <p className="text-xs font-medium text-slate-500 mt-1">🆔 Telegram ID: {user?.telegram_id}</p>
+                  </div>
+
+                  <div className="bg-indigo-50/50 border border-indigo-100/30 p-4 rounded-2xl flex gap-3">
+                    <span className="text-xl">💡</span>
+                    <p className="text-xs text-indigo-900 leading-relaxed font-medium">
+                      Ваши персональные данные (фото, имя, фамилия) автоматически берутся из Telegram. Чтобы их обновить — просто измените их в самом мессенджере!
+                    </p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => {
+                     setLoading(true);
+                     setActiveModal(null);
+                     setTimeout(() => {
+                        window.location.reload();
+                     }, 300);
+                  }}
+                  className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2"
+                >
+                  🔄 Принудительно обновить данные
+                </button>
+              </div>
+            )}
+
+            {activeModal === 'SUPPORT' && (
+              <div className="text-center flex flex-col items-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 text-white rounded-2xl flex items-center justify-center text-3xl shadow-lg shadow-orange-100 mb-5">
+                  ❓
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 mb-2">Связаться с поддержкой</h3>
+                <p className="text-sm text-slate-600 font-medium leading-relaxed mb-8">
+                  Появились технические сложности, вопросы по оплате или предложения по развитию сайта? Наша команда с радостью ответит вам в Telegram!
+                </p>
+                <a 
+                  href="https://t.me/BotHelpG_bot?start=support" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="w-full bg-orange-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-orange-500/20 hover:bg-orange-600 hover:-translate-y-0.5 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  💬 Написать в поддержку PulseMarket
+                </a>
+                <p className="text-[10px] text-slate-400 font-bold mt-4 tracking-wide uppercase">
+                  Среднее время ответа: ~5 минут ⚡
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -9,7 +9,7 @@ export async function GET() {
         const snapshot = await db.collection('listings').get();
         
         const allItems = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() as any }));
+            .map((doc: any) => ({ id: doc.id, ...doc.data() as any }));
             
         return NextResponse.json({
             total_listings: snapshot.size,

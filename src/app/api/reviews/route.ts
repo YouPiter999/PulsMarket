@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       .limit(50)
       .get();
 
-    const reviews = snapshot.docs.map(doc => ({
+    const reviews = snapshot.docs.map((doc: any) => ({
       id: doc.id,
       ...doc.data()
     }));
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     // Atomic Update via Firestore Transaction for aggregated metrics
     const userRef = db.collection('users').doc(String(seller_telegram_id));
     
-    await db.runTransaction(async (transaction) => {
+    await db.runTransaction(async (transaction: any) => {
       const userSnap = await transaction.get(userRef);
       
       let currentRatingAvg = 0;

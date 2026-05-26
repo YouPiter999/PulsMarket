@@ -60,7 +60,7 @@ export async function GET() {
     // Commit any remaining writes in the final batch
     if (batchCount > 0) {
        await batch.commit();
-    }
+     }
     
     console.log(`✅ Success! Migrated ${migratedCount} records to current active Firestore.`);
     
