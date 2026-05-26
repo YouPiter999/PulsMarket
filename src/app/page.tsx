@@ -6,15 +6,24 @@ export const revalidate = 30; // Revalidate the home page every 30 seconds for i
 export default async function Home() {
   try {
     const db = getFirestoreDb();
-    const snapshot = await db.collection('listings')
-      .orderBy('createdAt', 'desc')
-      .limit(100)
-      .get();
+    const [generalSnapshot, prioritySnapshot] = await Promise.all([
+      db.collection('listings')
+        .orderBy('createdAt', 'desc')
+        .limit(250)
+        .get(),
+      db.collection('listings')
+        .where('is_priority', '==', true)
+        .limit(100)
+        .get()
+    ]);
 
-    const listings = snapshot.docs.map((doc: any) => {
-      const data = doc.data();
+    const mergedDocs = new Map<string, any>();
+    generalSnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+    prioritySnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+
+    const listings = Array.from(mergedDocs.values()).map((data: any) => {
       return {
-        id: doc.id,
+        id: data.id,
         title: data.title,
         price: data.price,
         currency: data.currency,
@@ -32,7 +41,10 @@ export default async function Home() {
       };
     }) as Listing[];
 
-    const nextCursor = snapshot.docs.length === 100 ? snapshot.docs[snapshot.docs.length - 1].id : null;
+    // Sort by createdAt descending
+    listings.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    const nextCursor = generalSnapshot.docs.length === 250 ? generalSnapshot.docs[generalSnapshot.docs.length - 1].id : null;
 
     return <HomeClient initialListings={listings} initialNextCursor={nextCursor} />;
   } catch (error) {

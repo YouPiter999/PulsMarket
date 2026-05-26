@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const db = getFirestoreDb();
     const snapshot = await db.collection('learned_rules').orderBy('createdAt', 'desc').limit(20).get();
-    const rules = snapshot.docs.map(doc => doc.data());
+    const rules = snapshot.docs.map((doc: any) => doc.data());
     return NextResponse.json({ success: true, rules });
   } catch (error) {
     console.error('Learn API error:', error);

@@ -16,6 +16,7 @@ export async function GET(request: Request) {
     
     const snapshot = await db.collection('listings')
       .where('country', '==', country)
+      .select('category', 'createdAt')
       .get();
       
     let countHour = 0;

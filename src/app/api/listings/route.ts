@@ -206,29 +206,42 @@ export async function GET(request: Request) {
     const limit = parseInt(limitStr, 10) || 50;
     const q = searchParams.get('q')?.toLowerCase() || '';
 
-    let query: any = db.collection('listings').orderBy('createdAt', 'desc');
+    let listings: any[] = [];
+    let nextCursor: string | null = null;
 
     if (q) {
       // Fetch more items and filter in memory since Firebase has no full-text search
-      query = query.limit(300);
-    } else {
-      query = query.limit(limit);
-      if (cursorId) {
-        const cursorDoc = await db.collection('listings').doc(cursorId).get();
-        if (cursorDoc.exists) {
-          query = query.startAfter(cursorDoc);
-        }
-      }
-    }
-
-    const snapshot = await query.get();
-    let listings = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-
-    if (q) {
+      const snapshot = await db.collection('listings').orderBy('createdAt', 'desc').limit(300).get();
+      listings = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
       listings = listings.filter((item: any) => {
          const text = ((item.title || '') + ' ' + (item.description || '') + ' ' + (item.location || '')).toLowerCase();
          return text.includes(q);
       });
+    } else if (cursorId) {
+      let query = db.collection('listings').orderBy('createdAt', 'desc').limit(limit);
+      const cursorDoc = await db.collection('listings').doc(cursorId).get();
+      if (cursorDoc.exists) {
+        query = query.startAfter(cursorDoc);
+      }
+      const snapshot = await query.get();
+      listings = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      nextCursor = snapshot.docs.length === limit ? snapshot.docs[snapshot.docs.length - 1].id : null;
+    } else {
+      // First page / initial load without search: get both general and priority
+      const [generalSnapshot, prioritySnapshot] = await Promise.all([
+        db.collection('listings').orderBy('createdAt', 'desc').limit(limit).get(),
+        db.collection('listings').where('is_priority', '==', true).limit(100).get()
+      ]);
+
+      const mergedDocs = new Map<string, any>();
+      generalSnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+      prioritySnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+
+      listings = Array.from(mergedDocs.values());
+      // Sort by createdAt descending
+      listings.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      
+      nextCursor = generalSnapshot.docs.length === limit ? generalSnapshot.docs[generalSnapshot.docs.length - 1].id : null;
     }
 
     // Return lightweight objects to optimize payload size
@@ -248,11 +261,11 @@ export async function GET(request: Request) {
       is_priority: item.is_priority || false,
       source: item.source || '',
       username: item.username || ''
-    })).slice(0, limit);
+    }));
     
     return NextResponse.json({
       listings,
-      nextCursor: (!q && snapshot.docs.length === limit) ? snapshot.docs[snapshot.docs.length - 1].id : null
+      nextCursor
     });
   } catch (error) {
     console.error('GET API Error:', error);

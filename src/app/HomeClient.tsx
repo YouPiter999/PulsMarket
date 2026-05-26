@@ -1067,10 +1067,10 @@ export default function HomeClient({
 
             return matchesCountry && matchesSearch && matchesCategory && matchesSubcategory && matchesFavorites && matchesCity && matchesMinPrice && matchesMaxPrice && matchesProperty && matchesYear;
           });
-          const SUPER_VIP_AD = {
+          const SUPER_VIP_AD: Listing = {
             id: 'FPY37jBN5znxPfuN1FNt',
             title: 'Роскошная квартира в аренду',
-            price: 140,
+            price: '140',
             currency: 'EUR',
             category: 'Недвижимость',
             location: 'Искеле',

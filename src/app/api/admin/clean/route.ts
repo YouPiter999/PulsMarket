@@ -90,7 +90,16 @@ export async function GET() {
             seenExternalIds.add(fingerprint);
 
             // 2. STALE LISTING REMOVAL (> 9 days)
-            const createdAt = data.createdAt ? new Date(data.createdAt.seconds * 1000) : now;
+            let createdAt = now;
+            if (data.createdAt) {
+                if (typeof data.createdAt === 'string') {
+                    createdAt = new Date(data.createdAt);
+                } else if (data.createdAt.seconds) {
+                    createdAt = new Date(data.createdAt.seconds * 1000);
+                } else {
+                    createdAt = new Date(data.createdAt);
+                }
+            }
             const diffDays = (now.getTime() - createdAt.getTime()) / (1000 * 3600 * 24);
             if (diffDays > 9 && data.category !== 'Новости') {
                 await doc.ref.delete();
