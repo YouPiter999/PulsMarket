@@ -84,6 +84,27 @@ export async function POST(request: Request) {
     const sourceStr = String(data.source || '').toLowerCase();
     const originatesFromMainChannel = sourceStr.includes('northcyprus_island');
 
+    // Global duplicate check by external_id
+    if (data.external_id) {
+      let query = db.collection('listings').where('external_id', '==', String(data.external_id));
+      if (isTelegram && data.source) {
+        query = query.where('source', '==', String(data.source));
+      }
+      const existing = await query.limit(1).get();
+      if (!existing.empty) {
+        if (!originatesFromMainChannel) {
+          console.log('Duplicate external ID rejected (global check):', data.external_id);
+          return NextResponse.json({ success: false, message: 'Duplicate listing detected by external ID' }, { status: 409 });
+        } else {
+          // If it originates from our main channel, we can delete the existing one to allow update/refresh
+          console.log('🔥 Deleting existing listing to replace with update from main channel for external ID:', data.external_id);
+          const batch = db.batch();
+          existing.docs.forEach((doc: any) => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      }
+    }
+
     // ----- VALIDATION BLOCK START -----
     if (!isPaidPublication) {
       // Price validation
@@ -113,36 +134,6 @@ export async function POST(request: Request) {
           return NextResponse.json({ success: false, message: 'A specific city or region is required (cannot be empty or just a country name)' }, { status: 400 });
       }
 
-      // Duplicate detection (last 60 entries)
-      const snapshot = await db.collection('listings').orderBy('createdAt', 'desc').limit(60).get();
-      const listings = snapshot.docs.map((doc: any) => doc.data());
-      const isDuplicate = listings.some((l: any) => {
-          const cleanTitle1 = String(l.title || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
-          const cleanTitle2 = String(data.title || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
-          const titlePriceMatch = (cleanTitle1 === cleanTitle2 && String(l.price) === String(data.price));
-          const imageMatch = data.image_url && l.image_url && data.image_url === l.image_url;
-          const extIdMatch = data.external_id && l.external_id && String(data.external_id) === String(l.external_id);
-          return titlePriceMatch || imageMatch || extIdMatch;
-      });
-
-      if (isDuplicate) {
-        if (!originatesFromMainChannel) {
-            console.log('Duplicate listing rejected:', data.title);
-            return NextResponse.json({ success: false, message: 'Duplicate listing detected' }, { status: 409 });
-        } else {
-            // Merge duplicates from supreme channel
-            const cleanTitleNew = data.title.toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
-            for (const doc of snapshot.docs) {
-                const l = doc.data();
-                const cleanTitleOld = (l.title || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
-                if (cleanTitleOld === cleanTitleNew && String(l.price) === String(data.price)) {
-                    console.log('🔥 Merging Supreme Duplicate: deleting existing instance', doc.id);
-                    await doc.ref.delete();
-                }
-            }
-        }
-      }
-
       // Contact validation for non‑news listings
       if (data.category !== 'Новости') {
           const rawBody = ((data.title || '') + ' ' + (data.description || '')).toLowerCase();
@@ -163,6 +154,36 @@ export async function POST(request: Request) {
     }
     // ----- VALIDATION BLOCK END -----
 
+    // Global duplicate detection for ALL publications (last 300 entries)
+    const snapshot = await db.collection('listings').orderBy('createdAt', 'desc').limit(300).get();
+    const listings = snapshot.docs.map((doc: any) => doc.data());
+    const isDuplicate = listings.some((l: any) => {
+        const cleanTitle1 = String(l.title || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
+        const cleanTitle2 = String(data.title || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
+        const titlePriceMatch = (cleanTitle1 === cleanTitle2 && String(l.price) === String(data.price));
+        const imageMatch = data.image_url && l.image_url && data.image_url === l.image_url;
+        const extIdMatch = data.external_id && l.external_id && String(data.external_id) === String(l.external_id);
+        return titlePriceMatch || imageMatch || extIdMatch;
+    });
+
+    if (isDuplicate) {
+      if (!originatesFromMainChannel) {
+          console.log('Duplicate listing rejected (global filter):', data.title);
+          return NextResponse.json({ success: false, message: 'Duplicate listing detected' }, { status: 409 });
+      } else {
+          // Merge duplicates from supreme channel
+          const cleanTitleNew = data.title.toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
+          for (const doc of snapshot.docs) {
+              const l = doc.data();
+              const cleanTitleOld = (l.title || '').toLowerCase().replace(/[^a-zа-я0-9]/g, '').trim();
+              if (cleanTitleOld === cleanTitleNew && String(l.price) === String(data.price)) {
+                  console.log('🔥 Merging Supreme Duplicate: deleting existing instance', doc.id);
+                  await doc.ref.delete();
+              }
+          }
+      }
+    }
+
     // Add timestamp and ID
     const docRef = db.collection('listings').doc();
     const newListing = {
@@ -180,7 +201,8 @@ export async function POST(request: Request) {
 
     // Broadcast to Telegram if needed
     const isRecoveryBatch = sourceStr.includes('recovery') || sourceStr.includes('historical');
-    if (!originatesFromMainChannel && !isRecoveryBatch) {
+    const isScraperSource = sourceStr.startsWith('telegram (@') || sourceStr.includes('telegram (@');
+    if (!originatesFromMainChannel && !isRecoveryBatch && !isScraperSource) {
         broadcastStatus(newListing).catch(err => console.error('Background TG notify failed:', err));
     }
 
@@ -259,6 +281,8 @@ export async function GET(request: Request) {
       description: item.description ? (item.description.length > 150 ? item.description.substring(0, 150) + '...' : item.description) : '',
       type: item.type,
       is_priority: item.is_priority || false,
+      is_vip: item.is_vip || false,
+      vip_until: item.vip_until || null,
       source: item.source || '',
       username: item.username || ''
     }));
