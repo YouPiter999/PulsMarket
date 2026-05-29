@@ -128,7 +128,13 @@ export function Navbar({
               </div>
             </div>
 
-            <Link href="/blog" className="px-4 py-2 font-bold text-gray-700 hover:text-blue-600">Блог</Link>
+            <Link href="/pricing" className="px-4 py-2 font-bold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              {t.pricing || 'Тарифы ИИ'}
+            </Link>
+
+            <Link href="/blog" className="px-4 py-2 font-bold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              {t.blog || 'Блог'}
+            </Link>
 
             <button 
               onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
@@ -150,17 +156,25 @@ export function Navbar({
               <Link href="/" className="flex items-center gap-2">
                 <span className="text-2xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">PulseMarket</span>
               </Link>
-              <button 
-                onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
-                className={`p-2 rounded-xl transition-all ${showFavoritesOnly ? 'bg-red-50 text-red-600 shadow-sm' : 'bg-gray-100 text-gray-600'}`}
-              >
-                {showFavoritesOnly ? '❤️' : '🤍'}
-                {favoritesCount > 0 && (
-                  <span className="absolute top-1 right-2 w-4 h-4 bg-red-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center border-2 border-white">
-                    {favoritesCount}
-                  </span>
-                )}
-              </button>
+              <div className="flex items-center gap-2.5">
+                <Link href="/pricing" className="text-xs font-black bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-3 py-1.5 rounded-xl shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-95 transition-all whitespace-nowrap">
+                  {t.pricing || 'Тарифы'}
+                </Link>
+                <Link href="/blog" className="text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-blue-600 transition-colors px-1 py-1">
+                  {t.blog || 'Блог'}
+                </Link>
+                <button 
+                  onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                  className={`p-2 rounded-xl transition-all shrink-0 ${showFavoritesOnly ? 'bg-red-50 text-red-600 shadow-sm' : 'bg-gray-100 text-gray-600'}`}
+                >
+                  {showFavoritesOnly ? '❤️' : '🤍'}
+                  {favoritesCount > 0 && (
+                    <span className="absolute top-1 right-2 w-4 h-4 bg-red-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                      {favoritesCount}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
             
             <div className="flex gap-2">

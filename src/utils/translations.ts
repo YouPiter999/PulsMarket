@@ -33,6 +33,8 @@ export const translations = {
     statsHour: "За последний час",
     statsDay: "За последние 24 часа",
     statsNineDays: "За 9 дней (актуальные)",
+    pricing: "Тарифы ИИ",
+    blog: "Блог",
   },
   en: {
     title: "Recommendations for you",
@@ -68,6 +70,8 @@ export const translations = {
     statsHour: "In the last hour",
     statsDay: "In the last 24 hours",
     statsNineDays: "In the last 9 days (relevant)",
+    pricing: "AI Pricing",
+    blog: "Blog",
   },
   tr: {
     title: "Sizin için öneriler",
@@ -103,6 +107,8 @@ export const translations = {
     statsHour: "Son bir saatte",
     statsDay: "Son 24 saatte",
     statsNineDays: "Son 9 günde (güncel)",
+    pricing: "AI Fiyatları",
+    blog: "Blog",
   }
 };
 
