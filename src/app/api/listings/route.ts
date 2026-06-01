@@ -2,51 +2,36 @@
 import { NextResponse } from 'next/server';
 import { getFirestoreDb } from '@/lib/firebaseAdmin';
 import { broadcastStatus } from '../../../lib/networkDispatcher';
+import { getCategoryNuclear } from '@/lib/categoryClassifier';
 
 export const dynamic = 'force-dynamic';
-
-function getCategoryNuclear(title: string, description: string) {
-  const text = (title + " " + description).toLowerCase();
-
-  if (text.includes("новости")) return "Новости";
-
-  const toyKeywords = ["игрушки", "игрушк", "кукла", "машинка", "конструктор", "lego", "лего", "пистолет", "бластер", "пазл", "мяч", "коляска", "самокат", "nerf", "фортнайт", "fortnite"];
-  const jobKeywords = ["вакансия", "требуется", "работа", "ищу работу", "ищем сотрудника"];
-  const furnitureKeywords = ["диван", "шкаф", "стол", "стул", "кровать", "матрас", "кухня", "комод", "тумба"];
-  const vehicleBrands = ["bmw", "audi", "mercedes", "toyota", "nissan", "honda", "mazda", "ford", "vw", "kia", "hyundai", "tesla", "porsche", "мерседес"];
-
-  const hasTransportBrand = vehicleBrands.some(brand => new RegExp(`\\b${brand}\\b`).test(text));
-  const hasTransportGeneric = /\\bавто(?:мобил|бус|салон)?\\b|\\bавто\\b/.test(text);
-  const hasCarWord = /\\bмашин[а-я]*\\b/.test(text);
-
-  const housingRoots = ["квартир", "дом", "вилл", "аренд", "сдам", "сдаю", "сниму", "куплю", "продам", "участ", "земл", "офис", "магазин", "пентхаус", "таунхаус", "студи", "апартамент", "спальн", "villa", "apartment", "studio", "flat", "office", "bedroom", "bathroom"];
-  const hasHousingKeyword = housingRoots.some(root => new RegExp(`\\b${root}[а-яa-z]*\\b`, 'i').test(text));
-  const hasRoomsPattern = /\\b\\d\\+\\d\\b/.test(text);
-
-  const isToy = toyKeywords.some(kw => text.includes(kw));
-  const isFurniture = furnitureKeywords.some(kw => text.includes(kw));
-  const isElec = ["iphone", "ipad", "ноутбук", "macbook", "телевизор", "смартфон", "пылесос"].some(kw => text.includes(kw)) || /\\b(pк|pc|тв|tv)\\b/i.test(text);
-
-  const hasItemSignals = isToy || isFurniture || isElec || hasTransportBrand || (hasCarWord && !text.includes("парковк"));
-
-  const strictHousingMarkers = ["1+1", "2+1", "3+1", "4+1", "0+1", "таунхаус", "пентхаус", "апартамент", "резорт", "villa", "apartment", "bedroom", "office"];
-  const hasStrictHousing = strictHousingMarkers.some(kw => text.includes(kw.toLowerCase()));
-
-  const isHousing = (hasHousingKeyword || hasRoomsPattern) && (!hasItemSignals || hasStrictHousing);
-  if (isHousing) return "Недвижимость";
-  if (isToy) return "Разное";
-  if (hasTransportBrand || (hasCarWord && !text.includes("парковк")) || hasTransportGeneric) return "Транспорт";
-  if (jobKeywords.some(kw => text.includes(kw))) return "Работа";
-  if (isFurniture) return "Мебель";
-  if (isElec) return "Электроника";
-  if (["услуги", "ремонт", "перевозка", "доставка", "массаж", "обучение"].some(kw => text.includes(kw))) return "Услуги";
-  return "Разное";
-}
 
 export async function POST(request: Request) {
   try {
     const db = getFirestoreDb();
     const data = await request.json();
+
+    // Clean listing numbers in all titles/descriptions and translated fields
+    const cleanPattern = /(?:^|(?<=\W))[\(\[\{]?(?:номер\s+объявления|listing\s+number|ad\s+id|listing\s+id|ilan\s+no(?:t)?|ilan\s+numarası|илан\s+но|αριθμός\s+αγγελίας|κωδικός\s+αγγελίας)\s*(?:[:№#\s]+)?\s*\d+\b[\)\]\}]?/gi;
+    const cleanString = (val: any) => {
+      if (typeof val !== 'string' || !val) return val;
+      let cleaned = val.replace(cleanPattern, '');
+      // Remove leading and trailing punctuation left behind
+      cleaned = cleaned.trim().replace(/^[\s\-•*|,:;]+/, '').replace(/[\s\-•*|,:;]+$/, '');
+      return cleaned;
+    };
+
+    if (data.title) data.title = cleanString(data.title);
+    if (data.description) data.description = cleanString(data.description);
+    if (data.title_ru) data.title_ru = cleanString(data.title_ru);
+    if (data.title_en) data.title_en = cleanString(data.title_en);
+    if (data.title_tr) data.title_tr = cleanString(data.title_tr);
+    if (data.description_ru) data.description_ru = cleanString(data.description_ru);
+    if (data.description_en) data.description_en = cleanString(data.description_en);
+    if (data.description_tr) data.description_tr = cleanString(data.description_tr);
+
+    // Auto-determine and unify category before validation checks
+    data.category = getCategoryNuclear(data.title || '', data.description || '', data.category);
 
     // ---- NEW VALIDATIONS ----
     // 1. Username must be present and visible.
@@ -68,7 +53,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: 'Listing must contain at least a price or a photo.' }, { status: 400 });
     }
 
-    const restrictedUsers = ["alice12121223", "alexzander94", "ofeliana1", "elenacyprus234", "kamelot7171", "li1problem", "alexmoov"];
+    const restrictedSnapshot = await db.collection('restricted_usernames').get();
+    const dbRestricted = restrictedSnapshot.docs.map((doc: any) => doc.id.toLowerCase());
+    const defaultRestricted = ["alice12121223", "alexzander94", "ofeliana1", "elenacyprus234", "kamelot7171", "li1problem", "alexmoov"];
+    const restrictedUsers = Array.from(new Set([...defaultRestricted, ...dbRestricted]));
     const usernameClean = String(data.username || '').toLowerCase().replace(/^@/, '').replace(/^tg_/, '').trim();
     const contactClean = String(data.contact || '').toLowerCase().replace(/^@/, '').replace(/^tg_/, '').trim();
 
@@ -182,6 +170,28 @@ export async function POST(request: Request) {
               }
           }
       }
+    }
+
+    // Auto-determine country if missing
+    if (!data.country) {
+      const locLower = String(data.location || '').toLowerCase();
+      const titleLower = String(data.title || '').toLowerCase();
+      const descLower = String(data.description || '').toLowerCase();
+      const textLower = `${titleLower} ${descLower} ${locLower}`;
+      
+      const southCities = [
+        'лимасол', 'лимассол', 'limassol',
+        'ларнак', 'larnaca',
+        'пафос', 'paphos',
+        'айя', 'ayia',
+        'протарас', 'protaras',
+        'паралимни', 'paralimni',
+        'южный кипр', 'south cyprus',
+        'республика кипр'
+      ];
+      
+      const isSouth = southCities.some(city => textLower.includes(city));
+      data.country = isSouth ? 'Республика Кипр' : 'Северный Кипр';
     }
 
     // Add timestamp and ID
