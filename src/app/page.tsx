@@ -1,7 +1,8 @@
 import { getFirestoreDb } from '@/lib/firebaseAdmin';
 import HomeClient, { Listing } from './HomeClient';
+import { resolveCategory } from '@/components/CategoryGrid';
 
-export const revalidate = 30; // Revalidate the home page every 30 seconds for instant loads without cold starts
+export const dynamic = 'force-dynamic'; // Force dynamic rendering on every request to show live Firestore data and bypass ISR caching issues on Firebase Functions
 
 export default async function Home() {
   try {
@@ -46,7 +47,44 @@ export default async function Home() {
 
     const nextCursor = generalSnapshot.docs.length === 250 ? generalSnapshot.docs[generalSnapshot.docs.length - 1].id : null;
 
-    return <HomeClient initialListings={listings} initialNextCursor={nextCursor} />;
+    // Fetch initial stats for 'Северный Кипр' (SSR/ISR)
+    const statsSnapshot = await db.collection('listings')
+      .where('country', '==', 'Северный Кипр')
+      .select('category', 'createdAt')
+      .get();
+
+    const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+    const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
+    const nineDaysAgo = new Date(Date.now() - 777600000).toISOString();
+
+    let countHour = 0;
+    let countDay = 0;
+    let countNineDays = 0;
+    const categoryCounts: Record<string, number> = {};
+
+    statsSnapshot.forEach((doc: any) => {
+      const data = doc.data();
+      const cat = resolveCategory(data.category);
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+
+      if (data.createdAt) {
+        if (data.createdAt >= oneHourAgo) countHour++;
+        if (data.createdAt >= oneDayAgo) countDay++;
+        if (data.createdAt >= nineDaysAgo) countNineDays++;
+      }
+    });
+
+    categoryCounts['Все'] = statsSnapshot.size;
+
+    const initialStats = {
+      total: statsSnapshot.size,
+      countHour,
+      countDay,
+      countNineDays,
+      categoryCounts
+    };
+
+    return <HomeClient initialListings={listings} initialNextCursor={nextCursor} initialStats={initialStats} />;
   } catch (error) {
     console.error('Failed to fetch listings for home page:', error);
     // Fallback to empty list if DB fails
