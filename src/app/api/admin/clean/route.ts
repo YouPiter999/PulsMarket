@@ -388,6 +388,8 @@ export async function GET() {
                 updates.category = targetCategory;
             }
 
+            const rawContentLower = ((data.title || '') + ' ' + (data.description || '')).toLowerCase();
+
             // Location Repair
             if (!data.location || data.location === "Не указана" || data.location === "Е" || data.location === "е") {
                 const cities = ["Лимасол", "Пафос", "Ларнака", "Никосия", "Кирения", "Фамагуста", "Искеле"];
