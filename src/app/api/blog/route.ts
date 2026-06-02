@@ -70,3 +70,21 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const db = getFirestoreDb();
+    const snapshot = await db.collection('articles').get();
+    
+    const batch = db.batch();
+    snapshot.docs.forEach((doc: any) => {
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+    
+    return NextResponse.json({ success: true, message: 'All blog articles deleted successfully' });
+  } catch (error: any) {
+    console.error('Error deleting articles:', error);
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
+  }
+}

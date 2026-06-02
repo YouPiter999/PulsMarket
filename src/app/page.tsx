@@ -7,20 +7,51 @@ export const dynamic = 'force-dynamic'; // Force dynamic rendering on every requ
 export default async function Home() {
   try {
     const db = getFirestoreDb();
-    const [generalSnapshot, prioritySnapshot] = await Promise.all([
-      db.collection('listings')
-        .orderBy('createdAt', 'desc')
-        .limit(250)
-        .get(),
-      db.collection('listings')
-        .where('is_priority', '==', true)
-        .limit(100)
-        .get()
-    ]);
+    const defaultCountry = 'Северный Кипр';
+
+    let generalSnapshot;
+    let prioritySnapshot;
+
+    try {
+      [generalSnapshot, prioritySnapshot] = await Promise.all([
+        db.collection('listings')
+          .where('country', '==', defaultCountry)
+          .orderBy('createdAt', 'desc')
+          .limit(250)
+          .get(),
+        db.collection('listings')
+          .where('country', '==', defaultCountry)
+          .where('is_priority', '==', true)
+          .limit(100)
+          .get()
+      ]);
+    } catch (e) {
+      console.warn("Index warning in SSR page.tsx: fallback to memory filter", e);
+      [generalSnapshot, prioritySnapshot] = await Promise.all([
+        db.collection('listings')
+          .orderBy('createdAt', 'desc')
+          .limit(400)
+          .get(),
+        db.collection('listings')
+          .where('is_priority', '==', true)
+          .limit(100)
+          .get()
+      ]);
+    }
 
     const mergedDocs = new Map<string, any>();
-    generalSnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
-    prioritySnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+    generalSnapshot.docs.forEach((doc: any) => {
+      const data = doc.data();
+      if ((data.country || 'Северный Кипр') === defaultCountry) {
+        mergedDocs.set(doc.id, { id: doc.id, ...data });
+      }
+    });
+    prioritySnapshot.docs.forEach((doc: any) => {
+      const data = doc.data();
+      if ((data.country || 'Северный Кипр') === defaultCountry) {
+        mergedDocs.set(doc.id, { id: doc.id, ...data });
+      }
+    });
 
     const listings = Array.from(mergedDocs.values()).map((data: any) => {
       return {
@@ -45,7 +76,11 @@ export default async function Home() {
     // Sort by createdAt descending
     listings.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-    const nextCursor = generalSnapshot.docs.length === 250 ? generalSnapshot.docs[generalSnapshot.docs.length - 1].id : null;
+    const filteredGeneralDocs = generalSnapshot.docs.filter((doc: any) => {
+      const data = doc.data();
+      return (data.country || 'Северный Кипр') === defaultCountry;
+    });
+    const nextCursor = filteredGeneralDocs.length >= 250 ? filteredGeneralDocs[filteredGeneralDocs.length - 1].id : null;
 
     // Fetch initial stats for 'Северный Кипр' (SSR/ISR)
     const statsSnapshot = await db.collection('listings')

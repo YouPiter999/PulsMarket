@@ -34,6 +34,8 @@ export interface Listing {
   source: "user" | "telegram_scraper";
   externalLink?: string; // Ссылка на оригинальный пост в ТГ
   isPriority?: boolean;
+  isVip?: boolean;
+  vipUntil?: string;
   isOfficial?: boolean;
   viewCount: number;
   metadata: Record<string, any>; // Для доп. полей типа "пробег" или "кол-во комнат"

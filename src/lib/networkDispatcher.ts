@@ -16,16 +16,14 @@ export async function broadcastStatus(p: any) {
     const u = 'https://pulsemarket-group-app.web.app';
     const lu = `${u}/listing/${p.id}`;
     
-    // Republic of Cyprus filters (DO NOT CROSS-POST TO TELEGRAM)
+    // Republic of Cyprus filters (CROSS-POST TO @cypruspuls INSTEAD OF SKIPPING)
     const country = p.country || '';
     const locCheck = String(p.location || '').toLowerCase();
     const isSouth = country === 'Республика Кипр' || 
                    ['лимасол', 'лимассол', 'пафос', 'ларнака', 'никосия', 'айя-напа', 'протарас', 'троодос'].some(city => locCheck.includes(city));
                    
-    if (isSouth) {
-      console.log(`🇨🇾 Skipping Telegram broadcast for ${p.id} due to South Cyprus location.`);
-      return false;
-    }
+    const v2_south = process.env.TELEGRAM_SOUTH_CHANNEL_ID || '@cypruspuls';
+    const targetChat = isSouth ? v2_south : v2;
     
     let e = '📦';
     const c = String(p.category || '').toLowerCase();
@@ -62,7 +60,11 @@ export async function broadcastStatus(p: any) {
         contactLine = `\n<b>📞 Телефон:</b> ${phoneMatch[1]}`;
       }
     }
-    
+    let morePhotosLine = '';
+    if (p.additional_images && Array.isArray(p.additional_images) && p.additional_images.length > 0) {
+      morePhotosLine = '\n\n📸 <b>Больше фото на сайте!</b>';
+    }
+
     const txt = `
 🆕 <b>НОВОЕ ОБЪЯВЛЕНИЕ НА PulseMarket!</b>
 
@@ -70,22 +72,68 @@ ${e} <b>${p.title.toUpperCase()}</b>
 
 ${pr}${loc}${d ? '\n' + d : ''}${contactLine}
 
-📝 <i>${dc}</i>
+📝 <i>${dc}</i>${morePhotosLine}
 
 #${p.category?.replace(/\s+/g, '_') || 'Без_категории'} #PulseMarket
     `.trim();
 
     const rkm = {
-      inline_keyboard: [[{ text: '🌐 Посмотреть на сайте', url: lu }]]
+      inline_keyboard: [[
+        { text: '🌐 Открыть на сайте', url: lu },
+        { text: '🔔 Получать Уведомления', url: 'https://t.me/BotHelpG_bot?start=alerts' }
+      ]]
     };
 
     let threadId = 1;
-    if (c.includes('недвижимость')) {
-      threadId = (p.subcategory === 'Сдаю' || p.subcategory === 'Сниму') ? 11 : 9;
-    } else if (c.includes('услуги')) {
-      threadId = 198;
-    } else if (c.includes('работа')) {
-      threadId = 343;
+    if (isSouth) {
+      const tRent = Number(process.env.TELEGRAM_SOUTH_THREAD_RENT) || 131;
+      const tSale = Number(process.env.TELEGRAM_SOUTH_THREAD_SALE) || 131;
+      const tServices = Number(process.env.TELEGRAM_SOUTH_THREAD_SERVICES) || 138;
+      const tJobs = Number(process.env.TELEGRAM_SOUTH_THREAD_JOBS) || 140;
+      const tGeneral = Number(process.env.TELEGRAM_SOUTH_THREAD_GENERAL) || 146;
+      const tTransport = Number(process.env.TELEGRAM_SOUTH_THREAD_TRANSPORT) || 134;
+      const tElec = Number(process.env.TELEGRAM_SOUTH_THREAD_ELEC) || 136;
+      const tFurniture = Number(process.env.TELEGRAM_SOUTH_THREAD_FURNITURE) || 142;
+      const tClothes = Number(process.env.TELEGRAM_SOUTH_THREAD_CLOTHES) || 144;
+
+      if (c.includes('недвижимость')) {
+        threadId = (p.subcategory === 'Сдаю' || p.subcategory === 'Сниму') ? tRent : tSale;
+      } else if (c.includes('транспорт') || c.includes('авто')) {
+        threadId = tTransport;
+      } else if (c.includes('электроника')) {
+        threadId = tElec;
+      } else if (c.includes('услуги')) {
+        threadId = tServices;
+      } else if (c.includes('работа')) {
+        threadId = tJobs;
+      } else if (c.includes('мебель')) {
+        threadId = tFurniture;
+      } else if (c.includes('одежда') || c.includes('вещи')) {
+        threadId = tClothes;
+      } else {
+        threadId = tGeneral;
+      }
+    } else {
+      const tRent = Number(process.env.TELEGRAM_MAIN_THREAD_RENT) || 11;
+      const tSale = Number(process.env.TELEGRAM_MAIN_THREAD_SALE) || 9;
+      const tServices = Number(process.env.TELEGRAM_MAIN_THREAD_SERVICES) || 343;
+      const tJobs = Number(process.env.TELEGRAM_MAIN_THREAD_JOBS) || 3016;
+      const tTransport = Number(process.env.TELEGRAM_MAIN_THREAD_TRANSPORT) || 974;
+      const tTransportRent = Number(process.env.TELEGRAM_MAIN_THREAD_TRANSPORT_RENT) || 1736;
+
+      const descLower = String(p.description || '').toLowerCase();
+      const isRentHeuristic = descLower.includes('аренд') || descLower.includes('прокат') || descLower.includes('сдаю') || descLower.includes('сниму') || descLower.includes('rent') ||
+                             ['Сдаю', 'Сниму'].includes(p.subcategory || '');
+
+      if (c.includes('недвижимость')) {
+        threadId = (p.subcategory === 'Сдаю' || p.subcategory === 'Сниму' || isRentHeuristic) ? tRent : tSale;
+      } else if (c.includes('услуги')) {
+        threadId = tServices;
+      } else if (c.includes('работа')) {
+        threadId = tJobs;
+      } else if (c.includes('транспорт') || c.includes('авто')) {
+        threadId = isRentHeuristic ? tTransportRent : tTransport;
+      }
     }
 
     const dmn = ['a', 'p', 'i', '.', 't', 'e', 'l', 'e', 'g', 'r', 'a', 'm', '.', 'o', 'r', 'g'].join('');
@@ -101,7 +149,7 @@ ${pr}${loc}${d ? '\n' + d : ''}${contactLine}
         const blob = new Blob([buffer], { type: mimeType });
         
         const fd = new FormData();
-        fd.append('chat_id', v2);
+        fd.append('chat_id', targetChat);
         fd.append('message_thread_id', String(threadId));
         fd.append('parse_mode', 'HTML');
         fd.append('reply_markup', JSON.stringify(rkm));
@@ -122,7 +170,7 @@ ${pr}${loc}${d ? '\n' + d : ''}${contactLine}
 
     let mtd = 'sendMessage';
     const pld: any = {
-      chat_id: v2,
+      chat_id: targetChat,
       message_thread_id: threadId,
       parse_mode: 'HTML',
       reply_markup: JSON.stringify(rkm)

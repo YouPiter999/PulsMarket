@@ -9,12 +9,27 @@ export async function GET(request: Request) {
     
     // Fetch all news items. Since we do not combine equality with orderBy, 
     // this does NOT require a composite index.
-    const snapshot = await db.collection('listings')
-      .where('category', '==', 'Новости')
-      .limit(100) // Safety limit
-      .get();
+    let docs = [];
+    try {
+      // Пробуем оптимальный запрос (требует составного индекса category == 'Новости' + createdAt desc)
+      const snapshot = await db.collection('listings')
+        .where('category', '==', 'Новости')
+        .orderBy('createdAt', 'desc')
+        .limit(10)
+        .get();
+      docs = snapshot.docs;
+    } catch (indexError: any) {
+      console.warn('News index missing, falling back to memory sort. Create index here: https://console.firebase.google.com', indexError.message);
       
-    const news = snapshot.docs.map((doc: any) => {
+      // Fallback: берем больше документов без индекса и отсортируем в памяти
+      const snapshot = await db.collection('listings')
+        .where('category', '==', 'Новости')
+        .limit(200) // берем до 200 новостей
+        .get();
+      docs = snapshot.docs;
+    }
+      
+    const news = docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -32,7 +47,7 @@ export async function GET(request: Request) {
       };
     });
     
-    // Sort in memory by createdAt descending
+    // Всегда сортируем по дате по убыванию
     news.sort((a: any, b: any) => {
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;

@@ -29,6 +29,7 @@ export async function GET() {
         let deletedOld = 0;
         let deletedDuplicates = 0;
         let deletedBadNews = 0;
+        let deletedSpamPrices = 0;
         let b64Attempted = 0;
         let b64Succeeded = 0;
         const b64Errors: string[] = [];
@@ -388,6 +389,16 @@ export async function GET() {
                 updates.category = targetCategory;
             }
 
+            // 4.5. Delete listings with spam price 0 or 1 for commercial goods and services
+            const isNewsOrDemandClean = targetCategory === 'Новости' || targetCategory === '🔍 Спрос';
+            const priceValClean = data.price !== undefined && data.price !== null ? Number(String(data.price).replace(/[^0-9.]/g, '')) : NaN;
+            if (!isNewsOrDemandClean && !isNaN(priceValClean) && (priceValClean === 0 || priceValClean === 1)) {
+                console.log(`🗑️ Deleting listing ${listingId} (${title}) due to spam price ${priceValClean} in category ${targetCategory}`);
+                await doc.ref.delete();
+                deletedSpamPrices++;
+                continue;
+            }
+
             const rawContentLower = ((data.title || '') + ' ' + (data.description || '')).toLowerCase();
 
             // Location Repair
@@ -424,6 +435,7 @@ export async function GET() {
             deleted_old: deletedOld,
             deleted_duplicates: deletedDuplicates,
             deleted_unauthorized_news: deletedBadNews,
+            deleted_spam_prices: deletedSpamPrices,
             b64_attempted: b64Attempted,
             b64_succeeded: b64Succeeded,
             b64_errors: b64Errors.slice(0, 100),

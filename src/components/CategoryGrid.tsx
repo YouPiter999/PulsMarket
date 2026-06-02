@@ -9,7 +9,8 @@ import {
   Shirt, 
   Package, 
   Megaphone, 
-  Compass
+  Compass,
+  Search
 } from 'lucide-react';
 
 export const getCategoryIcon = (id: string, className: string = "w-6 h-6") => {
@@ -20,6 +21,7 @@ export const getCategoryIcon = (id: string, className: string = "w-6 h-6") => {
     case 'Электроника': return <Laptop className={className} />;
     case 'Услуги': return <Wrench className={className} />;
     case 'Работа': return <Briefcase className={className} />;
+    case '🔍 Спрос': return <Search className={className} />;
     case 'Мебель': return <Sofa className={className} />;
     case 'Одежда': return <Shirt className={className} />;
     case 'Новости': return <Megaphone className={className} />;
@@ -34,19 +36,21 @@ export const categories = [
   { id: 'Электроника', name: { ru: 'Электроника', tr: 'Elektronik', en: 'Electronics' } },
   { id: 'Услуги', name: { ru: 'Услуги', tr: 'Hizmetler', en: 'Services' } },
   { id: 'Работа', name: { ru: 'Работа', tr: 'İş', en: 'Jobs' } },
+  { id: '🔍 Спрос', name: { ru: 'Спрос', tr: 'Aranıyor', en: 'Demand' } },
   { id: 'Мебель', name: { ru: 'Мебель', tr: 'Mobilya', en: 'Furniture' } },
   { id: 'Одежда', name: { ru: 'Одежда', tr: 'Giyim', en: 'Clothing' } },
   { id: 'Разное', name: { ru: 'Разное', tr: 'Diğer', en: 'Misc' } },
   { id: 'Новости', name: { ru: 'Новости', tr: 'Haberler', en: 'News' } },
 ];
 
-export const KNOWN_CATEGORIES = ['Недвижимость', 'Транспорт', 'Электроника', 'Услуги', 'Работа', 'Мебель', 'Одежда', 'Новости'];
+export const KNOWN_CATEGORIES = ['Недвижимость', 'Транспорт', 'Электроника', 'Услуги', 'Работа', 'Мебель', 'Одежда', 'Новости', '🔍 Спрос'];
 
 export function resolveCategory(categoryName: string = ''): string {
   if (!categoryName) return 'Разное';
   if (KNOWN_CATEGORIES.includes(categoryName)) return categoryName;
   return 'Разное';
 }
+
 
 interface CategoryGridProps {
   selectedCategory: string;

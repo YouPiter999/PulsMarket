@@ -33,6 +33,16 @@ export async function POST(request: Request) {
     // Auto-determine and unify category before validation checks
     data.category = getCategoryNuclear(data.title || '', data.description || '', data.category);
 
+    // Reject spam prices 0 or 1 for commercial goods and services (allow for News and Search/Demand)
+    const isNewsOrDemand = data.category === 'Новости' || data.category === '🔍 Спрос';
+    const checkPriceStr = String(data.price || '').replace(/[^0-9.]/g, '');
+    const checkParsedPrice = parseFloat(checkPriceStr);
+    
+    if (!isNewsOrDemand && !isNaN(checkParsedPrice) && (checkParsedPrice === 0 || checkParsedPrice === 1)) {
+      console.warn(`🛑 Ingress blocked: Proposal listing has spam price ${checkParsedPrice} in category ${data.category}`);
+      return NextResponse.json({ success: false, message: 'Rejected: Spam price (0 or 1) for commercial listings.' }, { status: 400 });
+    }
+
     // ---- NEW VALIDATIONS ----
     // 1. Username must be present and visible.
     if (!data.username || typeof data.username !== 'string' || data.username.trim() === '') {
@@ -237,43 +247,153 @@ export async function GET(request: Request) {
     const limitStr = searchParams.get('limit') || '50';
     const limit = parseInt(limitStr, 10) || 50;
     const q = searchParams.get('q')?.toLowerCase() || '';
+    const country = searchParams.get('country') || '';
 
     let listings: any[] = [];
     let nextCursor: string | null = null;
 
     if (q) {
       // Fetch more items and filter in memory since Firebase has no full-text search
-      const snapshot = await db.collection('listings').orderBy('createdAt', 'desc').limit(300).get();
+      let snapshot;
+      if (country) {
+        try {
+          snapshot = await db.collection('listings')
+            .where('country', '==', country)
+            .orderBy('createdAt', 'desc')
+            .limit(300)
+            .get();
+        } catch (e) {
+          console.warn("Index warning in API GET (q): fallback to memory filtering country", e);
+          snapshot = await db.collection('listings')
+            .orderBy('createdAt', 'desc')
+            .limit(400)
+            .get();
+        }
+      } else {
+        snapshot = await db.collection('listings')
+          .orderBy('createdAt', 'desc')
+          .limit(300)
+          .get();
+      }
       listings = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
       listings = listings.filter((item: any) => {
          const text = ((item.title || '') + ' ' + (item.description || '') + ' ' + (item.location || '')).toLowerCase();
-         return text.includes(q);
+         const countryMatch = country ? (item.country || 'Северный Кипр').toLowerCase() === country.toLowerCase() : true;
+         return text.includes(q) && countryMatch;
       });
     } else if (cursorId) {
-      let query = db.collection('listings').orderBy('createdAt', 'desc').limit(limit);
       const cursorDoc = await db.collection('listings').doc(cursorId).get();
-      if (cursorDoc.exists) {
-        query = query.startAfter(cursorDoc);
+      if (country) {
+        try {
+          let query = db.collection('listings')
+            .where('country', '==', country)
+            .orderBy('createdAt', 'desc')
+            .limit(limit);
+          if (cursorDoc.exists) {
+            query = query.startAfter(cursorDoc);
+          }
+          const snapshot = await query.get();
+          listings = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+          nextCursor = snapshot.docs.length === limit ? snapshot.docs[snapshot.docs.length - 1].id : null;
+        } catch (e) {
+          console.warn("Index warning in API GET (cursor): fallback to memory pagination", e);
+          const fullSnapshot = await db.collection('listings')
+            .orderBy('createdAt', 'desc')
+            .limit(400)
+            .get();
+          const allListings = fullSnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }))
+            .filter((item: any) => (item.country || 'Северный Кипр').toLowerCase() === country.toLowerCase());
+          
+          const cursorIndex = allListings.findIndex((item: any) => item.id === cursorId);
+          const startIndex = cursorIndex !== -1 ? cursorIndex + 1 : 0;
+          listings = allListings.slice(startIndex, startIndex + limit);
+          nextCursor = (startIndex + listings.length < allListings.length) ? listings[listings.length - 1].id : null;
+        }
+      } else {
+        let query = db.collection('listings').orderBy('createdAt', 'desc').limit(limit);
+        if (cursorDoc.exists) {
+          query = query.startAfter(cursorDoc);
+        }
+        const snapshot = await query.get();
+        listings = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+        nextCursor = snapshot.docs.length === limit ? snapshot.docs[snapshot.docs.length - 1].id : null;
       }
-      const snapshot = await query.get();
-      listings = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-      nextCursor = snapshot.docs.length === limit ? snapshot.docs[snapshot.docs.length - 1].id : null;
     } else {
       // First page / initial load without search: get both general and priority
-      const [generalSnapshot, prioritySnapshot] = await Promise.all([
-        db.collection('listings').orderBy('createdAt', 'desc').limit(limit).get(),
-        db.collection('listings').where('is_priority', '==', true).limit(100).get()
-      ]);
+      if (country) {
+        let generalSnapshot;
+        let prioritySnapshot;
+        try {
+          [generalSnapshot, prioritySnapshot] = await Promise.all([
+            db.collection('listings')
+              .where('country', '==', country)
+              .orderBy('createdAt', 'desc')
+              .limit(limit)
+              .get(),
+            db.collection('listings')
+              .where('country', '==', country)
+              .where('is_priority', '==', true)
+              .limit(100)
+              .get()
+          ]);
+          
+          const mergedDocs = new Map<string, any>();
+          generalSnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+          prioritySnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
 
-      const mergedDocs = new Map<string, any>();
-      generalSnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
-      prioritySnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+          listings = Array.from(mergedDocs.values());
+          listings.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          nextCursor = generalSnapshot.docs.length === limit ? generalSnapshot.docs[generalSnapshot.docs.length - 1].id : null;
+        } catch (e) {
+          console.warn("Index warning in API GET (initial): fallback to memory filtering and sorting", e);
+          [generalSnapshot, prioritySnapshot] = await Promise.all([
+            db.collection('listings')
+              .orderBy('createdAt', 'desc')
+              .limit(400)
+              .get(),
+            db.collection('listings')
+              .where('is_priority', '==', true)
+              .limit(100)
+              .get()
+          ]);
+          
+          const mergedDocs = new Map<string, any>();
+          generalSnapshot.docs.forEach((doc: any) => {
+            const data = doc.data();
+            if ((data.country || 'Северный Кипр').toLowerCase() === country.toLowerCase()) {
+              mergedDocs.set(doc.id, { id: doc.id, ...data });
+            }
+          });
+          prioritySnapshot.docs.forEach((doc: any) => {
+            const data = doc.data();
+            if ((data.country || 'Северный Кипр').toLowerCase() === country.toLowerCase()) {
+              mergedDocs.set(doc.id, { id: doc.id, ...data });
+            }
+          });
 
-      listings = Array.from(mergedDocs.values());
-      // Sort by createdAt descending
-      listings.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-      
-      nextCursor = generalSnapshot.docs.length === limit ? generalSnapshot.docs[generalSnapshot.docs.length - 1].id : null;
+          listings = Array.from(mergedDocs.values());
+          listings.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          
+          const totalLengthBeforeSlice = listings.length;
+          listings = listings.slice(0, limit);
+          
+          nextCursor = totalLengthBeforeSlice > limit ? listings[listings.length - 1].id : null;
+        }
+      } else {
+        const [generalSnapshot, prioritySnapshot] = await Promise.all([
+          db.collection('listings').orderBy('createdAt', 'desc').limit(limit).get(),
+          db.collection('listings').where('is_priority', '==', true).limit(100).get()
+        ]);
+
+        const mergedDocs = new Map<string, any>();
+        generalSnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+        prioritySnapshot.docs.forEach((doc: any) => mergedDocs.set(doc.id, { id: doc.id, ...doc.data() }));
+
+        listings = Array.from(mergedDocs.values());
+        listings.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        
+        nextCursor = generalSnapshot.docs.length === limit ? generalSnapshot.docs[generalSnapshot.docs.length - 1].id : null;
+      }
     }
 
     // Return lightweight objects to optimize payload size

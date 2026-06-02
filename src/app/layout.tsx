@@ -109,6 +109,7 @@ export const metadata: Metadata = {
 };
 
 import Script from "next/script";
+import ChatWidget from "@/components/ChatWidget";
 
 export default function RootLayout({
   children,
@@ -156,6 +157,9 @@ export default function RootLayout({
           src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"
           strategy="lazyOnload"
         />
+        
+        {/* Web AI Assistant Widget */}
+        <ChatWidget />
       </body>
     </html>
   );

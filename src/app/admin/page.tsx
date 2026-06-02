@@ -160,6 +160,20 @@ function AdminContent() {
   const handleSpamAction = async (listing: any) => {
     if (!confirm('Отправить в СПАМ? Это удалит объявление и навсегда заблокирует автора.')) return;
     
+    // Обучение спам-фильтра текстом объявления
+    const spamText = ((listing.title || '') + ' ' + (listing.description || '')).trim();
+    if (spamText.length > 10) {
+      try {
+        await fetch('/api/admin/learn_spam', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: spamText })
+        });
+      } catch (e) {
+        console.error('Failed to send spam text to learning API:', e);
+      }
+    }
+    
     if (listing.username) {
       const clean = listing.username.replace('@', '').trim();
       if (!restrictedUsernames.includes(clean.toLowerCase())) {

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { translateListingText } from '../../../utils/translations';
+import { BannerAd } from '../../../components/BannerAd';
 
 export interface Listing {
   id: string;
@@ -23,6 +24,8 @@ export interface Listing {
   external_id?: string;
   country?: string;
   is_priority?: boolean;
+  is_vip?: boolean;
+  vip_until?: string;
   title_ru?: string;
   title_en?: string;
   title_tr?: string;
@@ -349,6 +352,11 @@ export default function ListingDetailClient({ initialListing }: { initialListing
                  <div className="text-xs font-bold text-blue-600 uppercase tracking-wider bg-blue-50 px-3 py-1 rounded-full w-max">
                     {listing.category}
                  </div>
+                 {listing.is_vip && (
+                    <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse">
+                       ⭐ VIP
+                    </div>
+                 )}
                  {listing.is_priority && listing.source && (() => {
                     const cleanName = (listing.source || '')
                        .replace(/Telegram\s\(@/gi, '')
@@ -484,6 +492,11 @@ export default function ListingDetailClient({ initialListing }: { initialListing
             <div className="text-gray-800 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{renderDescription(getTranslatedField(listing, 'description', lang))}</div>
           </div>
         )}
+
+        {/* Banner Ad */}
+        <div className="mt-8">
+          <BannerAd lang={lang} position="detail" />
+        </div>
 
         {/* 🗺️ Interactive Location Map Section */}
         {listing.location && listing.location !== "Не указана" && (

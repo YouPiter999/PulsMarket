@@ -102,11 +102,11 @@ body::before {
   background-color: transparent !important;
 }
 
-.text-gray-900 {
+.text-gray-900, .text-gray-800, .text-gray-700 {
   color: var(--text-main) !important;
 }
 
-.text-gray-500, .text-gray-400 {
+.text-gray-600, .text-gray-500, .text-gray-400 {
   color: var(--text-muted) !important;
 }
 

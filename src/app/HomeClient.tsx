@@ -3,6 +3,7 @@
 import { Navbar } from '../components/Navbar';
 import { CategoryGrid, resolveCategory, categories as globalCategories } from '../components/CategoryGrid';
 import { translations, translateListingText, getListingSubcategory } from '../utils/translations';
+import { BannerAd } from '../components/BannerAd';
 
 
 import { useState, useEffect, Fragment, useRef, useCallback } from 'react';
@@ -38,6 +39,8 @@ export interface Listing {
   source?: string;
   country?: string;
   is_priority?: boolean;
+  is_vip?: boolean;
+  vip_until?: string;
   contact?: string;
   title_ru?: string;
   title_en?: string;
@@ -84,10 +87,12 @@ function formatAdsPlural(count: number, lang: string) {
 
 export default function HomeClient({ 
   initialListings = [], 
-  initialNextCursor = null 
+  initialNextCursor = null,
+  initialStats = { countHour: 0, countDay: 0, countNineDays: 0, total: 0, categoryCounts: {} as Record<string, number> }
 }: { 
   initialListings?: Listing[];
   initialNextCursor?: string | null;
+  initialStats?: any;
 }) {
   const [listings, setListings] = useState<Listing[]>(initialListings);
   const [loading, setLoading] = useState(initialListings.length === 0);
@@ -119,20 +124,13 @@ export default function HomeClient({
   // Filter listings based on country for accurate stats
   const countryListings = listings.filter(l => (l.country || 'Северный Кипр').toLowerCase() === selectedCountry.toLowerCase());
 
-  const [stats, setStats] = useState({ countHour: 0, countDay: 0, countNineDays: 0, total: 0, categoryCounts: {} as Record<string, number> });
+  const [stats, setStats] = useState(initialStats);
   const [newsListings, setNewsListings] = useState<any[]>([]);
 
-  useEffect(() => {
-    fetch(`/api/stats?country=${encodeURIComponent(selectedCountry)}&t=${Date.now()}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setStats(data.stats);
-        }
-      })
-      .catch(console.error);
+  const isStatsInitialized = useRef(false);
 
-    // Fetch News independently so they don't disappear when paginating main listings
+  useEffect(() => {
+    // Fetch News always to keep them fresh
     fetch(`/api/news?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
@@ -141,6 +139,32 @@ export default function HomeClient({
         }
       })
       .catch(console.error);
+
+    // Skip initial stats fetch if we already have it from SSR (default is 'Северный Кипр')
+    if (!isStatsInitialized.current && selectedCountry === 'Северный Кипр') {
+      isStatsInitialized.current = true;
+      return;
+    }
+
+    fetch(`/api/stats?country=${encodeURIComponent(selectedCountry)}&t=${Date.now()}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setStats(data.stats);
+        }
+      })
+      .catch(console.error);
+  }, [selectedCountry]);
+
+  const isCountryInitialized = useRef(false);
+  useEffect(() => {
+    if (!isCountryInitialized.current) {
+      isCountryInitialized.current = true;
+      return;
+    }
+    setListings([]);
+    setNextCursor(null);
+    fetchListings(selectedCountry);
   }, [selectedCountry]);
   
   const { countHour, countDay, countNineDays } = stats;
@@ -156,7 +180,8 @@ export default function HomeClient({
       setIsLoadingMore(true);
       try {
         const queryStr = searchQuery.trim() ? `?q=${encodeURIComponent(searchQuery.trim())}` : '?limit=250';
-        const res = await fetch(`/api/listings${queryStr}${queryStr.includes('?') ? '&' : '?'}t=${Date.now()}`);
+        const countryParam = `&country=${encodeURIComponent(selectedCountry)}`;
+        const res = await fetch(`/api/listings${queryStr}${countryParam}&t=${Date.now()}`);
         const data = await res.json();
         const fetched = data.listings || [];
         setListings(prev => {
@@ -174,7 +199,7 @@ export default function HomeClient({
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, selectedCountry]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [sortMode, setSortMode] = useState<'default' | 'cheap' | 'expensive' | 'date'>('default');
@@ -188,8 +213,22 @@ export default function HomeClient({
   const [filterPropertyType, setFilterPropertyType] = useState('Все');
   const [filterMinYear, setFilterMinYear] = useState('');
   
+  // New Smart Filters
+  const [filterDealType, setFilterDealType] = useState<'Все' | 'rent' | 'sale'>('Все');
+  const [filterPropertyPlans, setFilterPropertyPlans] = useState<string[]>([]);
+  const [filterMaxMileage, setFilterMaxMileage] = useState('');
+  const [onlyOfficial, setOnlyOfficial] = useState(false);
+  const [onlyWithPrice, setOnlyWithPrice] = useState(false);
+  const [nearMeLoading, setNearMeLoading] = useState(false);
+  
   useEffect(() => {
     setFilterCity('Все');
+    setFilterDealType('Все');
+    setFilterPropertyPlans([]);
+    setFilterMinYear('');
+    setFilterMaxMileage('');
+    setOnlyOfficial(false);
+    setOnlyWithPrice(false);
   }, [selectedCountry]);
 
   const getCitiesForCountry = () => {
@@ -228,20 +267,46 @@ export default function HomeClient({
       ]
     };
 
+    const countryWhitelists: Record<string, string[]> = {
+      "Северный Кипр": [
+        "гирне", "искеле", "фамагуста", "никосия", "гюзельюрт", "лефке",
+        "лапта", "алсанджак", "эсентепе", "каршияка", "бафра", "чаталкой",
+        "караоланолу", "беллапаис", "озанкой", "кирения", "скеле", "магуса",
+        "лефкоша", "карпаз", "богаз", "татлису"
+      ],
+      "Республика Кипр": [
+        "лимасол", "ларнака", "пафос", "айя-напа", "протарас", "никосия",
+        "лимассол", "паралимни"
+      ],
+      "Турция": [
+        "стамбул", "анкара", "измир", "анталия", "алания", "мерсин",
+        "бодрум", "мармарис", "кемер", "фетхие"
+      ],
+      "Россия": [
+        "москва", "санкт-петербург", "сочи", "краснодар", "казань"
+      ],
+      "ОАЭ": [
+        "дубай", "абу-даби", "шарджа", "аджман"
+      ]
+    };
+
     const countryKey = Object.keys(predefined).find(
       k => k.toLowerCase() === selectedCountry.toLowerCase()
     );
 
     const list = countryKey ? [...predefined[countryKey]] : [];
+    const whitelist = countryKey ? countryWhitelists[countryKey] : [];
 
-    // Add any dynamic city from listings of this country
+    // Add any dynamic city from listings of this country, but only if it's whitelisted
     listings.forEach(l => {
       if ((l.country || 'Северный Кипр').toLowerCase() === selectedCountry.toLowerCase() && l.location) {
         const cityName = l.location.split(' ')[0].replace(/[,()]/g, '').trim();
         if (cityName && cityName !== "Не" && cityName !== "указана") {
           const val = cityName.toLowerCase();
-          if (!list.some(item => item.value === val)) {
-            list.push({ value: val, label: cityName });
+          if (whitelist.includes(val)) {
+            if (!list.some(item => item.value === val)) {
+              list.push({ value: val, label: cityName });
+            }
           }
         }
       }
@@ -466,6 +531,56 @@ export default function HomeClient({
     localStorage.setItem('pm_favorites', JSON.stringify(updated));
     setFavorites(updated);
   };
+
+  const handleNearMeClick = () => {
+    if (filterCity !== 'Все') {
+      setFilterCity('Все');
+      return;
+    }
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      alert(lang === 'ru' ? 'Геолокация не поддерживается вашим браузером' : 'Geolocation is not supported by your browser');
+      return;
+    }
+    setNearMeLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        const cityCoords: Record<string, { lat: number; lon: number; label: string }> = {
+          "гирне": { lat: 35.34, lon: 33.32, label: "гирне" },
+          "искеле": { lat: 35.29, lon: 33.89, label: "искеле" },
+          "фамагуста": { lat: 35.12, lon: 33.93, label: "фамагуста" },
+          "никосия": { lat: 35.17, lon: 33.36, label: "никосия" },
+          "гюзельюрт": { lat: 35.20, lon: 33.00, label: "гюзельюрт" },
+          "лефке": { lat: 35.11, lon: 32.85, label: "лефке" }
+        };
+        
+        let closestCity = "гирне";
+        let minDistance = Infinity;
+        
+        for (const [cityName, coords] of Object.entries(cityCoords)) {
+          const d = Math.sqrt(Math.pow(latitude - coords.lat, 2) + Math.pow(longitude - coords.lon, 2));
+          if (d < minDistance) {
+            minDistance = d;
+            closestCity = cityName;
+          }
+        }
+        
+        if (minDistance < 1.5) {
+          setFilterCity(closestCity);
+        } else {
+          alert(lang === 'ru' ? 'Вы находитесь слишком далеко от Кипра. Выбран город по умолчанию (Гирне).' : 'You are too far from Cyprus. Defaulting to Girne.');
+          setFilterCity('гирне');
+        }
+        setNearMeLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        alert(lang === 'ru' ? 'Не удалось определить геолокацию. Убедитесь, что доступ разрешен.' : 'Could not get geolocation. Please check permissions.');
+        setNearMeLoading(false);
+      },
+      { timeout: 10000 }
+    );
+  };
   
   const [formData, setFormData] = useState({
     title: '',
@@ -490,12 +605,12 @@ export default function HomeClient({
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
-  async function fetchListings() {
+  async function fetchListings(countryToFetch = selectedCountry) {
     if (listings.length === 0) {
       setLoading(true);
     }
     try {
-      const res = await fetch('/api/listings?limit=250');
+      const res = await fetch(`/api/listings?limit=250&country=${encodeURIComponent(countryToFetch)}&t=${Date.now()}`);
       const data = await res.json();
       const fetched = data.listings || data;
       setListings(prev => {
@@ -517,7 +632,7 @@ export default function HomeClient({
     if (isLoadingMore || !nextCursor) return;
     setIsLoadingMore(true);
     try {
-      const res = await fetch(`/api/listings?limit=100&cursor=${nextCursor}&t=${Date.now()}`);
+      const res = await fetch(`/api/listings?limit=100&cursor=${nextCursor}&country=${encodeURIComponent(selectedCountry)}&t=${Date.now()}`);
       const data = await res.json();
       if (data.listings && data.listings.length > 0) {
         setListings(prev => {
@@ -533,7 +648,7 @@ export default function HomeClient({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [nextCursor, isLoadingMore]);
+  }, [nextCursor, isLoadingMore, selectedCountry]);
 
   const handlePublishCtaClick = (e?: React.MouseEvent) => {
     if (e) {
@@ -698,40 +813,6 @@ export default function HomeClient({
         categoryCounts={stats.categoryCounts}
       />
 
-      {/* Live Stats Bar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 shadow-sm flex flex-wrap items-center justify-around gap-4 md:gap-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold">
-              ⏱️
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400">{t.statsHour}</div>
-              <div className="text-base sm:text-lg font-black text-gray-900">{formatAdsPlural(countHour, lang)}</div>
-            </div>
-          </div>
-          <div className="h-8 w-px bg-gray-200/50 hidden sm:block"></div>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
-              📅
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400">{t.statsDay}</div>
-              <div className="text-base sm:text-lg font-black text-gray-900">{formatAdsPlural(countDay, lang)}</div>
-            </div>
-          </div>
-          <div className="h-8 w-px bg-gray-200/50 hidden sm:block"></div>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl font-bold">
-              🚀
-            </div>
-            <div>
-              <div className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400">{lang === 'ru' ? 'Всего активных' : lang === 'en' ? 'Total Active' : 'Toplam Aktif'}</div>
-              <div className="text-base sm:text-lg font-black text-gray-900">{formatAdsPlural(stats.total, lang)}</div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* PREMIUM CTA BANNER A */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
@@ -1013,7 +1094,22 @@ export default function HomeClient({
                 </button>
               )}
               <button
-                onClick={() => { setSelectedCategory('Все'); setSelectedSubcategory('Все'); setSearchQuery(''); setShowFavoritesOnly(false); setSelectedCountry('Северный Кипр'); }}
+                onClick={() => { 
+                  setSelectedCategory('Все'); 
+                  setSelectedSubcategory('Все'); 
+                  setSearchQuery(''); 
+                  setShowFavoritesOnly(false); 
+                  setSelectedCountry('Северный Кипр');
+                  setFilterCity('Все');
+                  setFilterMinPrice('');
+                  setFilterMaxPrice('');
+                  setFilterDealType('Все');
+                  setFilterPropertyPlans([]);
+                  setFilterMinYear('');
+                  setFilterMaxMileage('');
+                  setOnlyOfficial(false);
+                  setOnlyWithPrice(false);
+                }}
                 className="text-xs font-bold text-gray-400 hover:text-red-500 transition-colors underline underline-offset-2 ml-1"
               >
                 {lang === 'ru' ? 'Сбросить всё' : lang === 'tr' ? 'Hepsini sıfırla' : 'Clear all'}
@@ -1031,7 +1127,7 @@ export default function HomeClient({
         ) : (() => {
           const filteredByCountry = listings.filter(item => {
             const itemCountry = item.country || 'Северный Кипр';
-            const matchesCountry = item.category === 'Новости' || itemCountry.toLowerCase() === selectedCountry.toLowerCase();
+            const matchesCountry = itemCountry.toLowerCase() === selectedCountry.toLowerCase();
             
             const matchesSearch = searchQuery 
               ? (item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1059,13 +1155,48 @@ export default function HomeClient({
 
             const t_ru = getTranslatedField(item, 'title', 'ru').toLowerCase();
             const d_ru = getTranslatedField(item, 'description', 'ru').toLowerCase();
-            const rooms = item.metadata?.rooms?.toLowerCase() || '';
-            const matchesProperty = filterPropertyType === 'Все' ? true : (t_ru.includes(filterPropertyType.toLowerCase()) || d_ru.includes(filterPropertyType.toLowerCase()) || rooms.includes(filterPropertyType.toLowerCase()));
+
+            // Deal Type filter (rent/sale)
+            const matchesDealType = filterDealType === 'Все' ? true : (() => {
+              const type = (item.type || '').toLowerCase();
+              const fullText = `${t_ru} ${d_ru}`;
+              if (filterDealType === 'rent') {
+                return type === 'аренда' || type === 'rent' || fullText.includes('аренда') || fullText.includes('сдам') || fullText.includes('сдаю') || fullText.includes('rent') || fullText.includes('посуточно');
+              }
+              if (filterDealType === 'sale') {
+                return type === 'продажа' || type === 'sale' || fullText.includes('продажа') || fullText.includes('продам') || fullText.includes('продаю') || fullText.includes('sale') || fullText.includes('купить');
+              }
+              return true;
+            })();
+
+            // Property plans filter (studio, 1+1, 2+1, 3+1, 4+)
+            const matchesPropertyPlan = filterPropertyPlans.length === 0 ? true : (() => {
+              const rooms = (item.metadata?.rooms || '').toLowerCase();
+              const fullText = `${t_ru} ${d_ru} ${rooms}`;
+              return filterPropertyPlans.some(plan => {
+                if (plan === 'studio') {
+                  return fullText.includes('студия') || fullText.includes('studio') || rooms === 'studio';
+                }
+                if (plan === '4+') {
+                  return /\b[4-9]\+\d\b/.test(fullText) || fullText.includes('4 спальни') || fullText.includes('5 спален') || fullText.includes('4+') || (item.metadata?.rooms && parseInt(item.metadata.rooms) >= 4);
+                }
+                return fullText.includes(plan) || rooms.includes(plan);
+              });
+            })();
 
             const year = Number(item.metadata?.year || 0);
             const matchesYear = filterMinYear ? (year >= Number(filterMinYear)) : true;
 
-            return matchesCountry && matchesSearch && matchesCategory && matchesSubcategory && matchesFavorites && matchesCity && matchesMinPrice && matchesMaxPrice && matchesProperty && matchesYear;
+            const mileage = Number(item.metadata?.mileage || 0);
+            const matchesMileage = filterMaxMileage ? (mileage > 0 && mileage <= Number(filterMaxMileage)) : true;
+
+            const src = String(item.source || '').toLowerCase();
+            const isOfficial = src.includes('northcyprus_island') || src.includes('news_cyprus_north') || src.includes('личные сообщения боту') || item.is_vip;
+            const matchesOfficial = onlyOfficial ? isOfficial : true;
+
+            const matchesWithPrice = onlyWithPrice ? (itemPrice > 0) : true;
+
+            return matchesCountry && matchesSearch && matchesCategory && matchesSubcategory && matchesFavorites && matchesCity && matchesMinPrice && matchesMaxPrice && matchesDealType && matchesPropertyPlan && matchesYear && matchesMileage && matchesOfficial && matchesWithPrice;
           });
           const SUPER_VIP_AD: Listing = {
             id: 'FPY37jBN5znxPfuN1FNt',
@@ -1088,21 +1219,31 @@ export default function HomeClient({
             .filter(item => selectedCategory === 'Новости' ? true : item.category !== 'Новости')
             .filter(item => item.id !== 'FPY37jBN5znxPfuN1FNt') // Remove if it accidentally came from API
             .sort((a, b) => {
+                // If custom sorting is selected, sort strictly by that mode
+                if (sortMode === 'cheap') return Number(a.price || 0) - Number(b.price || 0);
+                if (sortMode === 'expensive') return Number(b.price || 0) - Number(a.price || 0);
+                if (sortMode === 'date') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+
+                // Otherwise, this is 'default' sort mode (Сначала свежие):
                 const getScore = (listing: any) => {
                    const src = String(listing.source || '').toLowerCase();
                    const isSupreme = src.includes('northcyprus_island') || src.includes('news_cyprus_north');
                    
-                   if (isSupreme) return 10; // OFFICIAL CHANNELS ON TOP
-                   if (listing.is_priority) return 5; // PRIORITY IN MIDDLE
-                   return 0; // COMPETITOR ADS AT BOTTOM
+                   // Only apply priority boosts if the listing is from the last 72 hours
+                   const isFresh = new Date().getTime() - new Date(listing.createdAt).getTime() < 72 * 60 * 60 * 1000;
+                   
+                   if (!isFresh) return 0; // Drop all priority boosts for older listings to keep the feed chronological
+                   
+                   if (listing.is_vip) return 20; // VIP PAID PLACEMENT ON TOP
+                   if (isSupreme) return 15; // OFFICIAL CHANNELS SECOND
+                   if (listing.is_priority) return 10; // PRIORITY THIRD
+                   return 0;
                 };
                 
                 const scoreA = getScore(a);
                 const scoreB = getScore(b);
                 
                 if (scoreB !== scoreA) return scoreB - scoreA; 
-                if (sortMode === 'cheap') return Number(a.price || 0) - Number(b.price || 0);
-                if (sortMode === 'expensive') return Number(b.price || 0) - Number(a.price || 0);
                 return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
             });
 
@@ -1117,47 +1258,321 @@ export default function HomeClient({
           
           return (
             <div className="flex flex-col gap-6">
-              {/* Horizontal Filters */}
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 w-full overflow-x-auto">
-                <div className="flex flex-nowrap md:flex-wrap items-center gap-4 min-w-max md:min-w-0">
+              {/* Поиск, Фильтры и Статистика */}
+              <div className="flex flex-col gap-4 w-full">
+                {/* Заголовок фильтров и Компактный метаблок статистики */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xl">🎛️</span>
-                    <h3 className="font-black text-gray-900">{lang === 'ru' ? 'Фильтры' : lang === 'tr' ? 'Filtreler' : 'Filters'}</h3>
+                    <h3 className="font-black text-gray-900 dark:text-white">
+                      {lang === 'ru' ? 'Фильтры' : lang === 'tr' ? 'Filtreler' : 'Filters'}
+                    </h3>
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <select value={filterCity} onChange={e => setFilterCity(e.target.value)} className="bg-gray-50 border-none rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none w-48">
-                      <option value="Все">{lang === 'ru' ? 'Любой город' : 'Any City'}</option>
-                      {getCitiesForCountry().map((city) => (
-                        <option key={city.value} value={city.value}>{city.label}</option>
-                      ))}
-                    </select>
-
-                    <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-2 py-0.5">
-                      <input type="number" placeholder={lang === 'ru' ? 'Мин цена' : 'Min Price'} value={filterMinPrice} onChange={e => setFilterMinPrice(e.target.value)} className="w-24 bg-transparent border-none p-2 text-sm focus:ring-0 outline-none placeholder-gray-400" />
-                      <span className="text-gray-300">-</span>
-                      <input type="number" placeholder={lang === 'ru' ? 'Макс' : 'Max'} value={filterMaxPrice} onChange={e => setFilterMaxPrice(e.target.value)} className="w-24 bg-transparent border-none p-2 text-sm focus:ring-0 outline-none placeholder-gray-400" />
-                    </div>
-
-                    {(selectedCategory === 'Недвижимость' || selectedCategory === 'Все') && (
-                      <select value={filterPropertyType} onChange={e => setFilterPropertyType(e.target.value)} className="bg-gray-50 border-none rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none w-40">
-                        <option value="Все">{lang === 'ru' ? 'Любая недвиж.' : 'Any Prop.'}</option>
-                        <option value="аренда">Аренда (Rent)</option>
-                        <option value="продаж">Продажа (Sale)</option>
-                        <option value="1+1">1+1</option>
-                        <option value="2+1">2+1</option>
-                      </select>
-                    )}
-                    
-                    {(selectedCategory === 'Транспорт' || selectedCategory === 'Все') && (
-                      <input type="number" placeholder={lang === 'ru' ? 'Год авто (от)' : 'Car Year (from)'} value={filterMinYear} onChange={e => setFilterMinYear(e.target.value)} className="bg-gray-50 border-none rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-36" />
-                    )}
+                  <div className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-3.5 py-1.5 rounded-xl border border-blue-100 dark:border-blue-900/30 flex items-center gap-1.5 w-fit">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                    </span>
+                    <span>
+                      {lang === 'ru' ? `${countDay} новых за 24 часа • ${stats.total} активных объявлений` 
+                       : lang === 'tr' ? `24 saatte ${countDay} yeni • ${stats.total} aktif ilan` 
+                       : `${countDay} new in 24h • ${stats.total} active ads`}
+                    </span>
                   </div>
                 </div>
+
+                {/* Быстрые чип-фильтры */}
+                <div className="flex flex-wrap gap-2.5">
+                  <button 
+                    onClick={() => setOnlyOfficial(!onlyOfficial)} 
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                      onlyOfficial 
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-blue-500/20' 
+                        : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 dark:text-gray-200 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10'
+                    }`}
+                  >
+                    👑 {lang === 'ru' ? 'Только официальные' : lang === 'tr' ? 'Sadece resmi' : 'Only official'}
+                  </button>
+                  
+                  <button 
+                    onClick={() => setOnlyWithPrice(!onlyWithPrice)} 
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                      onlyWithPrice 
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-blue-500/20' 
+                        : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 dark:text-gray-200 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10'
+                    }`}
+                  >
+                    💰 {lang === 'ru' ? 'Только с ценой' : lang === 'tr' ? 'Fiyatlı olanlar' : 'Only with price'}
+                  </button>
+
+                  {(selectedCategory === 'Все' || selectedCategory === 'Недвижимость') && (
+                    <>
+                      <button 
+                        onClick={() => setFilterDealType(filterDealType === 'rent' ? 'Все' : 'rent')} 
+                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                          filterDealType === 'rent' 
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-blue-500/20' 
+                            : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 dark:text-gray-200 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10'
+                        }`}
+                      >
+                        🔑 {lang === 'ru' ? 'Аренда' : lang === 'tr' ? 'Kiralık' : 'Rent'}
+                      </button>
+
+                      <button 
+                        onClick={() => setFilterDealType(filterDealType === 'sale' ? 'Все' : 'sale')} 
+                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                          filterDealType === 'sale' 
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-blue-500/20' 
+                            : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 dark:text-gray-200 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10'
+                        }`}
+                      >
+                        🏠 {lang === 'ru' ? 'Продажа' : lang === 'tr' ? 'Satılık' : 'Sale'}
+                      </button>
+
+                      <button 
+                        onClick={() => setFilterMaxPrice(filterMaxPrice === '500' ? '' : '500')} 
+                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                          filterMaxPrice === '500' 
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-blue-500/20' 
+                            : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 dark:text-gray-200 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10'
+                        }`}
+                      >
+                        💶 {lang === 'ru' ? 'До 500 €' : lang === 'tr' ? '500 € Altı' : 'Under 500 €'}
+                      </button>
+                    </>
+                  )}
+
+                  {selectedCountry === 'Северный Кипр' && (
+                    <button 
+                      onClick={handleNearMeClick} 
+                      disabled={nearMeLoading}
+                      className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border shadow-sm flex items-center gap-1.5 ${
+                        filterCity !== 'Все' && ["гирне", "искеле", "фамагуста", "никосия", "гюзельюрт", "лефке"].includes(filterCity)
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-blue-500/20' 
+                          : 'bg-white hover:bg-gray-50 border-gray-200 text-gray-700 dark:text-gray-200 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10'
+                      }`}
+                    >
+                      📍 {nearMeLoading ? (lang === 'ru' ? 'Поиск...' : 'Searching...') : (lang === 'ru' ? 'Рядом со мной' : 'Near me')}
+                    </button>
+                  )}
+                </div>
+
+                {/* Раскрывающийся блок расширенных фильтров */}
+                <details className="group border border-gray-200 dark:border-white/10 rounded-2xl bg-white dark:bg-white/5 shadow-sm overflow-hidden transition-all duration-300">
+                  <summary className="flex items-center justify-between p-4 cursor-pointer select-none font-bold text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <span>⚙️</span>
+                      <span>{lang === 'ru' ? 'Расширенные фильтры' : lang === 'tr' ? 'Gelişmiş Filtreler' : 'Advanced Filters'}</span>
+                    </div>
+                    <span className="transition-transform duration-300 group-open:rotate-180 text-gray-400">▼</span>
+                  </summary>
+                  
+                  <div className="p-4 border-t border-gray-100 dark:border-white/10 bg-gray-50/50 dark:bg-black/10 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* 1. Город */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">
+                        {lang === 'ru' ? 'Город / Район' : lang === 'tr' ? 'Şehir / Bölge' : 'City / District'}
+                      </label>
+                      <select 
+                        value={filterCity} 
+                        onChange={e => setFilterCity(e.target.value)} 
+                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-xl p-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white"
+                      >
+                        <option value="Все" className="text-gray-900">{lang === 'ru' ? 'Любой город' : 'Any City'}</option>
+                        {getCitiesForCountry().map((city) => (
+                          <option key={city.value} value={city.value} className="text-gray-900">{city.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 2. Цена */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">
+                        {lang === 'ru' ? 'Цена' : lang === 'tr' ? 'Fiyat' : 'Price'}
+                      </label>
+                      <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-xl px-3 py-1">
+                        <input 
+                          type="number" 
+                          placeholder={lang === 'ru' ? 'от' : 'Min'} 
+                          value={filterMinPrice} 
+                          onChange={e => setFilterMinPrice(e.target.value)} 
+                          className="w-full bg-transparent border-none p-2 text-sm focus:ring-0 outline-none placeholder-gray-400 text-gray-900 dark:text-white" 
+                        />
+                        <span className="text-gray-300 dark:text-white/20">—</span>
+                        <input 
+                          type="number" 
+                          placeholder={lang === 'ru' ? 'до' : 'Max'} 
+                          value={filterMaxPrice} 
+                          onChange={e => setFilterMaxPrice(e.target.value)} 
+                          className="w-full bg-transparent border-none p-2 text-sm focus:ring-0 outline-none placeholder-gray-400 text-gray-900 dark:text-white" 
+                        />
+                      </div>
+                    </div>
+
+                    {/* 3. Категорийно-зависимые поля */}
+                    {(selectedCategory === 'Недвижимость' || selectedCategory === 'Все') && (
+                      <div className="flex flex-col gap-3 md:col-span-3 border-t border-gray-100 dark:border-white/10 pt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">
+                              {lang === 'ru' ? 'Тип сделки' : lang === 'tr' ? 'İşlem Tipi' : 'Deal Type'}
+                            </label>
+                            <div className="flex gap-2">
+                              {(['Все', 'rent', 'sale'] as const).map(type => (
+                                <button
+                                  key={type}
+                                  type="button"
+                                  onClick={() => setFilterDealType(type)}
+                                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                                    filterDealType === type
+                                      ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                                      : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 dark:bg-white/5 dark:border-white/10 dark:text-white dark:hover:bg-white/10'
+                                  }`}
+                                >
+                                  {type === 'Все' ? (lang === 'ru' ? 'Любой' : 'Any') : type === 'rent' ? (lang === 'ru' ? 'Аренда' : 'Rent') : (lang === 'ru' ? 'Продажа' : 'Sale')}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">
+                              {lang === 'ru' ? 'Планировка' : lang === 'tr' ? 'Plan / Oda sayısı' : 'Layout / Rooms'}
+                            </label>
+                            <div className="flex flex-wrap gap-2">
+                              {['studio', '1+1', '2+1', '3+1', '4+'].map(plan => {
+                                const isChecked = filterPropertyPlans.includes(plan);
+                                const displayPlan = plan === 'studio' ? (lang === 'ru' ? 'Студия' : 'Studio') : plan;
+                                return (
+                                  <button
+                                    key={plan}
+                                    type="button"
+                                    onClick={() => {
+                                      setFilterPropertyPlans(prev =>
+                                        prev.includes(plan) ? prev.filter(p => p !== plan) : [...prev, plan]
+                                      );
+                                    }}
+                                    className={`px-3 py-2 rounded-lg text-xs font-bold border transition-all ${
+                                      isChecked
+                                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 dark:bg-white/5 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/10'
+                                    }`}
+                                  >
+                                    {displayPlan}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {(selectedCategory === 'Транспорт') && (
+                      <div className="flex flex-col gap-3 md:col-span-3 border-t border-gray-100 dark:border-white/10 pt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">
+                              {lang === 'ru' ? 'Год выпуска (от)' : lang === 'tr' ? 'Model Yılı (en az)' : 'Car Year (from)'}
+                            </label>
+                            <input 
+                              type="number" 
+                              placeholder="Напр: 2018" 
+                              value={filterMinYear} 
+                              onChange={e => setFilterMinYear(e.target.value)} 
+                              className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-xl p-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white"
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-2">
+                            <label className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">
+                              {lang === 'ru' ? 'Максимальный пробег (км)' : lang === 'tr' ? 'Maksimum Kilometre (km)' : 'Max Mileage (km)'}
+                            </label>
+                            <input 
+                              type="number" 
+                              placeholder="Напр: 100000" 
+                              value={filterMaxMileage} 
+                              onChange={e => setFilterMaxMileage(e.target.value)} 
+                              className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-xl p-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </details>
               </div>
               
               <div className="flex flex-col lg:flex-row gap-8 items-start">
                 <div className="flex-1 w-full lg:w-2/3 xl:w-3/4">
+                {/* Mobile News Carousel (only visible on mobile/tablet) */}
+                <div className="block lg:hidden mb-6">
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">🔥</span>
+                      <h2 className="text-base font-extrabold text-gray-900 dark:text-white">
+                        {lang === 'ru' ? 'Свежие новости' : lang === 'tr' ? 'Son Haberler' : 'Fresh News'}
+                      </h2>
+                    </div>
+                    <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider animate-pulse">
+                      {lang === 'ru' ? 'В эфире' : lang === 'tr' ? 'Canlı' : 'Live'}
+                    </span>
+                  </div>
+                  
+                  {newsListings.length === 0 ? (
+                    <div className="bg-white dark:bg-white/5 rounded-2xl p-6 text-center text-gray-500 border border-gray-100 dark:border-white/10 shadow-sm">
+                      <span className="text-2xl block mb-1">📰</span>
+                      <p className="text-xs font-medium">
+                        {lang === 'ru' ? 'Пока нет свежих новостей' : lang === 'tr' ? 'Henüz haber yok' : 'No news yet'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex gap-4 overflow-x-auto pb-3 snap-x scrollbar-thin no-scrollbar" style={{ WebkitOverflowScrolling: 'touch' }}>
+                      {newsListings.slice(0, 5).map((news) => (
+                        <div key={news.id} className="min-w-[280px] max-w-[280px] bg-white dark:bg-white/5 rounded-2xl p-3 border border-gray-100 dark:border-white/10 shadow-sm snap-start flex flex-col justify-between shrink-0">
+                          <Link href={`/listing/${news.id}`} className="group flex flex-col gap-2 cursor-pointer h-full">
+                            {news.image_url && (
+                              <div className="aspect-[16/9] w-full rounded-xl overflow-hidden bg-gray-50 dark:bg-gray-900 shrink-0">
+                                <img 
+                                  src={news.image_url.includes('promo_banner') ? '/uploads/telegram/default_news.jpg' : news.image_url} 
+                                  alt={news.title} 
+                                  loading="lazy"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                />
+                              </div>
+                            )}
+                            <div className="flex-1 flex flex-col justify-between">
+                              <div>
+                                <span className="text-[9px] bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-bold px-1.5 py-0.5 rounded uppercase mb-1 inline-block">
+                                  {news.source || 'Telegram News'}
+                                </span>
+                                <h3 className="text-xs font-bold text-gray-800 dark:text-gray-200 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+                                  {getTranslatedField(news, 'title', lang)}
+                                </h3>
+                              </div>
+                              <div className="text-[10px] text-gray-400 mt-2">
+                                {new Date(news.createdAt).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            </div>
+                          </Link>
+                        </div>
+                      ))}
+                      <div className="min-w-[150px] bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/20 dark:to-blue-950/20 rounded-2xl p-4 border border-indigo-100 dark:border-indigo-900/30 shadow-sm snap-start flex flex-col items-center justify-center text-center shrink-0">
+                        <Link 
+                          href="https://t.me/news_cyprus_north" 
+                          target="_blank"
+                          className="flex flex-col items-center gap-1.5 cursor-pointer text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                        >
+                          <span className="text-2xl">📱</span>
+                          <span className="text-[10px] font-black uppercase tracking-wider">{lang === 'ru' ? 'Все новости' : 'All News'}</span>
+                          <span className="text-[9px] font-bold text-gray-400">{lang === 'ru' ? 'в Telegram' : 'on Telegram'} →</span>
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Results Count */}
                 {marketplaceListings.length > 0 && (
                   <div className="flex items-center gap-2 mb-5">
@@ -1187,6 +1602,15 @@ export default function HomeClient({
                         setSelectedCountry('Северный Кипр');
                         setSearchQuery('');
                         setShowFavoritesOnly(false);
+                        setFilterCity('Все');
+                        setFilterMinPrice('');
+                        setFilterMaxPrice('');
+                        setFilterDealType('Все');
+                        setFilterPropertyPlans([]);
+                        setFilterMinYear('');
+                        setFilterMaxMileage('');
+                        setOnlyOfficial(false);
+                        setOnlyWithPrice(false);
                       }}
                       className="text-blue-600 font-bold hover:underline bg-blue-50 px-6 py-2 rounded-xl transition-all hover:bg-blue-100"
                     >
@@ -1273,10 +1697,19 @@ export default function HomeClient({
                             </motion.div>
                           )}
                           
+                          {/* Баннерная реклама каждые 12 карточек */}
+                          {index > 0 && index % 12 === 0 && (
+                            <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} className="col-span-2 lg:col-span-3">
+                              <BannerAd lang={lang} position="feed" />
+                            </motion.div>
+                          )}
+
                           <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }} className="h-full">
                             <Link href={`/listing/${item.id}`} className="group cursor-pointer block h-full">
                           <div className={`relative aspect-[4/3] rounded-2xl overflow-hidden mb-3 glass-card transition-all duration-300 ${
-                            item.is_priority || String(item.source || '').toLowerCase().includes('northcyprus_island')
+                            item.is_vip
+                              ? 'ring-2 ring-amber-400/70 shadow-[0_0_25px_rgba(251,191,36,0.5)]'
+                              : item.is_priority || String(item.source || '').toLowerCase().includes('northcyprus_island')
                               ? 'ring-2 ring-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.4)]'
                               : ''
                           }`}>
@@ -1306,6 +1739,15 @@ export default function HomeClient({
                                 {favorites.includes(item.id) ? '❤️' : '🤍'}
                               </button>
                             </div>
+                            
+                            {item.is_vip && (
+                              <div className="absolute top-3 left-3 z-30">
+                                <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[9px] sm:text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse border border-amber-300/50">
+                                  <span>⭐</span>
+                                  <span>VIP</span>
+                                </div>
+                              </div>
+                            )}
                             
                             {(String(item.source || '').toLowerCase().includes('northcyprus_island')) ? (() => {
                                const cleanName = (item.source || '')
@@ -1495,10 +1937,10 @@ export default function HomeClient({
                             </div>
                           )}
                           <div>
-                            <span className="text-[10px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded-md uppercase mb-2 inline-block">
+                            <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 font-bold px-2 py-0.5 rounded-md uppercase mb-2 inline-block">
                               {news.source || 'Telegram News'}
                             </span>
-                            <h3 className="text-sm font-semibold text-gray-800 leading-snug group-hover:text-blue-600 transition-colors mb-2 line-clamp-3">
+                            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors mb-2 line-clamp-3">
                               {getTranslatedField(news, 'title', lang)}
                             </h3>
                             <div className="text-[11px] text-gray-500">

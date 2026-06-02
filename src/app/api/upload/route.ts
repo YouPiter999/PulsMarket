@@ -22,66 +22,149 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    let uploaded = false;
+    let publicUrl = "";
+    const uniqueName = `listings/${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${file.name || 'upload.jpg'}`;
+
     // 1. Try Firebase Storage (Primary - Stable & Self-hosted)
     try {
       const storage = getStorage();
-      const bucket = storage.bucket('pulsemarket-group-app.appspot.com');
-      const uniqueName = `listings/${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${file.name || 'upload.jpg'}`;
-      const bucketFile = bucket.file(uniqueName);
-
-      await bucketFile.save(buffer, {
-        metadata: {
-          contentType: file.type || 'image/jpeg',
-          metadata: {
-            firebaseStorageDownloadTokens: Math.random().toString(36).substring(2, 15) // token for compatibility
-          }
-        }
-      });
-
-      // Make the file publicly accessible
+      
+      // Try default bucket first
       try {
-        await bucketFile.makePublic();
-      } catch (pubErr) {
-        console.warn('Could not make file public, attempting signed URL or default public access:', pubErr);
+        const bucket = storage.bucket();
+        const bucketFile = bucket.file(uniqueName);
+        await bucketFile.save(buffer, {
+          metadata: {
+            contentType: file.type || 'image/jpeg',
+            metadata: {
+              firebaseStorageDownloadTokens: Math.random().toString(36).substring(2, 15) // token for compatibility
+            }
+          }
+        });
+        try { await bucketFile.makePublic(); } catch (e) {}
+        publicUrl = `https://storage.googleapis.com/${bucket.name}/${bucketFile.name}`;
+        uploaded = true;
+        console.log('Successfully uploaded to Default Firebase Storage:', publicUrl);
+      } catch (e: any) {
+        console.warn(`Default bucket failed: ${e.message}`);
       }
 
-      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${bucketFile.name}`;
-      console.log('Successfully uploaded to Firebase Storage:', publicUrl);
+      // Try .firebasestorage.app bucket name
+      if (!uploaded) {
+        try {
+          const bucket = storage.bucket('pulsemarket-group-app.firebasestorage.app');
+          const bucketFile = bucket.file(uniqueName);
+          await bucketFile.save(buffer, {
+            metadata: {
+              contentType: file.type || 'image/jpeg',
+              metadata: {
+                firebaseStorageDownloadTokens: Math.random().toString(36).substring(2, 15) // token for compatibility
+              }
+            }
+          });
+          try { await bucketFile.makePublic(); } catch (e) {}
+          publicUrl = `https://storage.googleapis.com/${bucket.name}/${bucketFile.name}`;
+          uploaded = true;
+          console.log('Successfully uploaded to firebasestorage.app Storage:', publicUrl);
+        } catch (e: any) {
+          console.warn(`firebasestorage.app bucket failed: ${e.message}`);
+        }
+      }
 
+      // Try .appspot.com bucket name
+      if (!uploaded) {
+        try {
+          const bucket = storage.bucket('pulsemarket-group-app.appspot.com');
+          const bucketFile = bucket.file(uniqueName);
+          await bucketFile.save(buffer, {
+            metadata: {
+              contentType: file.type || 'image/jpeg',
+              metadata: {
+                firebaseStorageDownloadTokens: Math.random().toString(36).substring(2, 15) // token for compatibility
+              }
+            }
+          });
+          try { await bucketFile.makePublic(); } catch (e) {}
+          publicUrl = `https://storage.googleapis.com/${bucket.name}/${bucketFile.name}`;
+          uploaded = true;
+          console.log('Successfully uploaded to appspot.com Storage:', publicUrl);
+        } catch (e: any) {
+          console.warn(`appspot.com bucket failed: ${e.message}`);
+          throw new Error(`All GCS buckets failed: ${e.message}`);
+        }
+      }
+    } catch (storageError: any) {
+      console.error('Firebase Storage failed, trying ImgBB:', storageError.message);
+    }
+
+    if (uploaded) {
       return NextResponse.json({
         success: true,
         url: publicUrl
       });
-    } catch (storageError) {
-      console.error('Firebase Storage failed, falling back to ImgBB:', storageError);
     }
 
     // 2. Fallback to ImgBB (High compatibility uploader)
-    try {
-      const base64Str = buffer.toString('base64');
-      const imgbbForm = new FormData();
-      imgbbForm.append('key', 'e53d3573d4e462b9048467002db84912');
-      imgbbForm.append('image', base64Str);
+    const base64Str = buffer.toString('base64');
+    const imgbbKeys = [
+      'e53d3573d4e462b9048467002db84912',
+      'ff26a742456c252d8becf571b3faa7da' // Alternate key found in scraper
+    ];
 
-      const imgbbResponse = await fetch('https://api.imgbb.com/1/upload', {
-        method: 'POST',
-        body: imgbbForm
-      });
+    for (const key of imgbbKeys) {
+      try {
+        const imgbbForm = new FormData();
+        imgbbForm.append('key', key);
+        imgbbForm.append('image', base64Str);
 
-      const resData = await imgbbResponse.json();
-      if (imgbbResponse.status === 200 && resData && resData.data && resData.data.url) {
-        console.log('Successfully uploaded to ImgBB:', resData.data.url);
-        return NextResponse.json({
-          success: true,
-          url: resData.data.url
+        const imgbbResponse = await fetch('https://api.imgbb.com/1/upload', {
+          method: 'POST',
+          body: imgbbForm
         });
+
+        const resData = await imgbbResponse.json();
+        if (imgbbResponse.status === 200 && resData && resData.data && resData.data.url) {
+          console.log('Successfully uploaded to ImgBB:', resData.data.url);
+          return NextResponse.json({
+            success: true,
+            url: resData.data.url
+          });
+        }
+        console.warn(`ImgBB key ${key} failed:`, resData?.error?.message || JSON.stringify(resData));
+      } catch (imgbbError: any) {
+        console.error(`ImgBB key ${key} failed with error:`, imgbbError.message);
       }
-      console.warn('ImgBB upload fallback failed:', resData);
-    } catch (imgbbError) {
-      console.error('ImgBB upload fallback error:', imgbbError);
     }
 
-    // 3. Fallback to Catbox (Relayed from server side to bypass VPS IP blocks)
+    // 3. Fallback to Imagebin (keyless fallback - stable)
+    try {
+      const blob = new Blob([bytes], { type: file.type });
+      const imagebinForm = new FormData();
+      imagebinForm.append('file', blob, file.name || 'upload.jpg');
+
+      const imagebinResponse = await fetch('https://imagebin.ca/upload.php', {
+        method: 'POST',
+        body: imagebinForm
+      });
+
+      const imagebinText = await imagebinResponse.text();
+      const lines = imagebinText.split('\n');
+      const urlLine = lines.find(line => line.startsWith('url:'));
+      if (urlLine) {
+        const imagebinUrl = urlLine.substring(4).trim();
+        console.log('Successfully uploaded to Imagebin:', imagebinUrl);
+        return NextResponse.json({
+          success: true,
+          url: imagebinUrl
+        });
+      }
+      console.warn('Imagebin upload fallback failed:', imagebinText);
+    } catch (imagebinError: any) {
+      console.error('Imagebin upload fallback error:', imagebinError.message);
+    }
+
+    // 4. Fallback to Catbox (Relayed from server side to bypass VPS IP blocks)
     const blob = new Blob([bytes], { type: file.type });
     const catboxForm = new FormData();
     catboxForm.append('reqtype', 'fileupload');
@@ -101,7 +184,7 @@ export async function POST(request: Request) {
         url: trimmed
       });
     } else {
-      return NextResponse.json({ error: 'Catbox and Firebase Storage both failed', detail: trimmed }, { status: 500 });
+      return NextResponse.json({ error: 'Catbox, Imagebin and Firebase Storage both failed', detail: trimmed }, { status: 500 });
     }
 
   } catch (error: any) {
