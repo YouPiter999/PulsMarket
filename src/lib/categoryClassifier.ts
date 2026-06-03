@@ -143,7 +143,11 @@ export function getCategoryNuclear(title: string, description: string, currentCa
   const isTransport = isTransportSignal && !isParkingOrGarageOnly;
 
   // 4. Приоритеты классификации по заголовку ( supreme confidence )
-  if (hasAnyWord(titleLower, absoluteHousingKeywords) || /\b\d\+\d\b/.test(titleLower)) return "Недвижимость";
+  const cleanTitleForHousing = titleLower
+    .replace(/\bland\s*[-_]?\s*rover\b/gi, ' ')
+    .replace(/\brange\s*[-_]?\s*rover\b/gi, ' ');
+
+  if (hasAnyWord(cleanTitleForHousing, absoluteHousingKeywords) || /\b\d\+\d\b/.test(cleanTitleForHousing)) return "Недвижимость";
   if (hasAnyWord(titleLower, transportBrands) || hasAnyWord(titleLower, transportGeneric)) return "Транспорт";
   if (hasAnyWord(titleLower, elecWords)) return "Электроника";
   if (hasAnyWord(titleLower, clothingWords)) return "Одежда";

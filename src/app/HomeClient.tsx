@@ -1198,7 +1198,24 @@ export default function HomeClient({
 
             return matchesCountry && matchesSearch && matchesCategory && matchesSubcategory && matchesFavorites && matchesCity && matchesMinPrice && matchesMaxPrice && matchesDealType && matchesPropertyPlan && matchesYear && matchesMileage && matchesOfficial && matchesWithPrice;
           });
-          const SUPER_VIP_AD: Listing = {
+          const SUPER_VIP_AD_1: Listing = {
+            id: 'tg_150385_super_vip',
+            title: 'Подготовка к школе и логопедия в Искеле',
+            price: '0',
+            currency: 'EUR',
+            category: 'Услуги',
+            location: 'Искеле',
+            createdAt: '2026-06-03T17:00:00.000Z',
+            username: '@KseniaBorodina',
+            description: '🎓 Подарите вашему ребенку уверенный старт!\nПриглашаю малышей и дошкольников на комплексные занятия.\n📚 Обучение: Чтение, Письмо, Математика.\n🗣 Логопедия: бережный запуск речи, постановка звуков.\n📍 Локация: Искеле.\nПисать @KseniaBorodina',
+            image_url: 'https://i.ibb.co/PztD3VYF/0742848d8de6.jpg',
+            source: 'Telegram (@northcyprus_island)',
+            country: 'Северный Кипр',
+            is_priority: true,
+            metadata: { rooms: '' }
+          };
+
+          const SUPER_VIP_AD_2: Listing = {
             id: 'FPY37jBN5znxPfuN1FNt',
             title: 'Роскошная квартира в аренду',
             price: '140',
@@ -1215,9 +1232,74 @@ export default function HomeClient({
             metadata: { rooms: '1+2' }
           };
 
+          const matchVipAd = (item: Listing) => {
+            const itemCountry = item.country || 'Северный Кипр';
+            const matchesCountry = itemCountry.toLowerCase() === selectedCountry.toLowerCase();
+            
+            const matchesSearch = searchQuery 
+              ? (item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                 (item.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                 item.location.toLowerCase().includes(searchQuery.toLowerCase()))
+              : true;
+              
+            const matchesCategory = selectedCategory === 'Все' 
+              ? true 
+              : resolveCategory(item.category) === selectedCategory;
+
+            const matchesFavorites = showFavoritesOnly ? favorites.includes(item.id) : true;
+
+            const loc = getTranslatedField(item, 'location', 'ru').toLowerCase();
+            const matchesCity = filterCity === 'Все' ? true : loc.includes(filterCity.toLowerCase());
+            
+            const itemPrice = Number(item.price || 0);
+            const matchesMinPrice = filterMinPrice ? itemPrice >= Number(filterMinPrice) : true;
+            const matchesMaxPrice = filterMaxPrice ? itemPrice <= Number(filterMaxPrice) : true;
+
+            const t_ru = getTranslatedField(item, 'title', 'ru').toLowerCase();
+            const d_ru = getTranslatedField(item, 'description', 'ru').toLowerCase();
+
+            // Deal Type filter (rent/sale)
+            const matchesDealType = filterDealType === 'Все' ? true : (() => {
+              const type = (item.type || '').toLowerCase();
+              const fullText = `${t_ru} ${d_ru}`;
+              if (filterDealType === 'rent') {
+                return type === 'аренда' || type === 'rent' || fullText.includes('аренда') || fullText.includes('сдам') || fullText.includes('сдаю') || fullText.includes('rent') || fullText.includes('посуточно');
+              }
+              if (filterDealType === 'sale') {
+                return type === 'продажа' || type === 'sale' || fullText.includes('продажа') || fullText.includes('продам') || fullText.includes('продаю') || fullText.includes('sale') || fullText.includes('купить');
+              }
+              return true;
+            })();
+
+            // Property plans filter (studio, 1+1, 2+1, 3+1, 4+)
+            const matchesPropertyPlan = filterPropertyPlans.length === 0 ? true : (() => {
+              const rooms = (item.metadata?.rooms || '').toLowerCase();
+              const fullText = `${t_ru} ${d_ru} ${rooms}`;
+              return filterPropertyPlans.some(plan => {
+                if (plan === 'studio') {
+                  return fullText.includes('студия') || fullText.includes('studio') || rooms === 'studio';
+                }
+                if (plan === '4+') {
+                  return /\b[4-9]\+\d\b/.test(fullText) || fullText.includes('4 спальни') || fullText.includes('5 спален') || fullText.includes('4+') || (item.metadata?.rooms && parseInt(item.metadata.rooms) >= 4);
+                }
+                return fullText.includes(plan) || rooms.includes(plan);
+              });
+            })();
+
+            const src = String(item.source || '').toLowerCase();
+            const isOfficial = src.includes('northcyprus_island') || src.includes('news_cyprus_north') || src.includes('личные сообщения боту') || item.is_vip;
+            const matchesOfficial = onlyOfficial ? isOfficial : true;
+
+            const matchesWithPrice = onlyWithPrice ? (itemPrice > 0) : true;
+
+            return matchesCountry && matchesSearch && matchesCategory && matchesFavorites && matchesCity && matchesMinPrice && matchesMaxPrice && matchesDealType && matchesPropertyPlan && matchesOfficial && matchesWithPrice;
+          };
+
+          const activeVipAds = [SUPER_VIP_AD_1, SUPER_VIP_AD_2].filter(matchVipAd);
+
           const rawMarketplaceListings = filteredByCountry
             .filter(item => selectedCategory === 'Новости' ? true : item.category !== 'Новости')
-            .filter(item => item.id !== 'FPY37jBN5znxPfuN1FNt') // Remove if it accidentally came from API
+            .filter(item => item.id !== 'FPY37jBN5znxPfuN1FNt' && item.id !== 'tg_150385_super_vip') // Remove if it accidentally came from API
             .sort((a, b) => {
                 // If custom sorting is selected, sort strictly by that mode
                 if (sortMode === 'cheap') return Number(a.price || 0) - Number(b.price || 0);
@@ -1247,8 +1329,8 @@ export default function HomeClient({
                 return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
             });
 
-          // Always inject VIP ad at the top!
-          const marketplaceListings = [SUPER_VIP_AD, ...rawMarketplaceListings];
+          // Always inject VIP ads at the top!
+          const marketplaceListings = [...activeVipAds, ...rawMarketplaceListings];
 
           const firstNonOfficialIndex = marketplaceListings.findIndex(
             (item, index) => index > 0 && !String(item.source || '').toLowerCase().includes('northcyprus_island')

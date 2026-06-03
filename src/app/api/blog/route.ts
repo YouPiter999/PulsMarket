@@ -73,16 +73,42 @@ export async function GET(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const slug = searchParams.get('slug');
+    const token = searchParams.get('token');
+    
+    // Auth check using BOT_TOKEN
+    const expectedToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!expectedToken || token !== expectedToken) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
     const db = getFirestoreDb();
-    const snapshot = await db.collection('articles').get();
     
-    const batch = db.batch();
-    snapshot.docs.forEach((doc: any) => {
-      batch.delete(doc.ref);
-    });
-    await batch.commit();
-    
-    return NextResponse.json({ success: true, message: 'All blog articles deleted successfully' });
+    if (slug) {
+      const docRef = db.collection('articles').doc(slug);
+      const docSnap = await docRef.get();
+      if (!docSnap.exists) {
+        return NextResponse.json({ error: 'Article not found' }, { status: 404 });
+      }
+      await docRef.delete();
+      return NextResponse.json({ success: true, message: `Article with slug '${slug}' deleted successfully` });
+    } else {
+      // For safety, require forceAll=true to bulk delete all articles
+      const forceAll = searchParams.get('forceAll') === 'true';
+      if (!forceAll) {
+        return NextResponse.json({ error: 'Missing slug parameter. To delete all articles, set forceAll=true.' }, { status: 400 });
+      }
+      
+      const snapshot = await db.collection('articles').get();
+      const batch = db.batch();
+      snapshot.docs.forEach((doc: any) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      
+      return NextResponse.json({ success: true, message: 'All blog articles deleted successfully' });
+    }
   } catch (error: any) {
     console.error('Error deleting articles:', error);
     return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });

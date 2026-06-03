@@ -5,7 +5,45 @@ import ListingDetailClient, { Listing } from './ListingDetailClient';
 // ISR: Revalidate this page on demand or every 60 seconds
 export const revalidate = 60; 
 
+export const STATIC_VIP_LISTINGS: Record<string, Listing> = {
+  'tg_150385_super_vip': {
+    id: 'tg_150385_super_vip',
+    title: 'Подготовка к школе и логопедия в Искеле',
+    price: '0',
+    currency: 'EUR',
+    category: 'Услуги',
+    location: 'Искеле',
+    createdAt: '2026-06-03T17:00:00.000Z',
+    username: '@KseniaBorodina',
+    description: '🎓 Подарите вашему ребенку уверенный старт!\nПриглашаю малышей и дошкольников на комплексные занятия.\n📚 Обучение: Чтение, Письмо, Математика.\n🗣 Логопедия: бережный запуск речи, постановка звуков.\n📍 Локация: Искеле.\nПисать @KseniaBorodina',
+    image_url: 'https://i.ibb.co/PztD3VYF/0742848d8de6.jpg',
+    source: 'Telegram (@northcyprus_island)',
+    country: 'Северный Кипр',
+    is_priority: true,
+    metadata: { rooms: '' }
+  },
+  'FPY37jBN5znxPfuN1FNt': {
+    id: 'FPY37jBN5znxPfuN1FNt',
+    title: 'Роскошная квартира в аренду',
+    price: '140',
+    currency: 'EUR',
+    category: 'Недвижимость',
+    location: 'Искеле',
+    createdAt: '2026-05-21T14:34:52.974Z',
+    username: '@Blesk_vbg',
+    description: 'Роскошная квартира в аренду на курорте Grand Sapphire Resort в центре Iskele в Северном Кипре.\nВ квартире 1+2 две элегантные спальни, две ванные комнаты, просторная гостиная с кухней и просторная терраса на 5 этаже с впечатляющим видом на море.\n140 € за ночь+уборка Писать @Blesk_vbg',
+    image_url: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=800&q=80',
+    source: 'Telegram (@northcyprus_island)',
+    country: 'Северный Кипр',
+    is_priority: true,
+    metadata: { rooms: '1+2' }
+  }
+};
+
 async function getListingData(id: string): Promise<Listing | null> {
+  if (STATIC_VIP_LISTINGS[id]) {
+    return STATIC_VIP_LISTINGS[id];
+  }
   try {
     const db = getFirestoreDb();
     const docRef = db.collection('listings').doc(id);
