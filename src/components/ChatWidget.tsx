@@ -1,203 +1,80 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { MessageCircle, X, Send, Bot, User } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-}
+const tooltips = {
+  ru: 'Жалобы и поддержка 🤖',
+  en: 'Support & Complaints 🤖',
+  tr: 'Destek ve Şikayetler 🤖'
+};
 
 export default function ChatWidget() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [lang, setLang] = useState<'ru' | 'en' | 'tr'>('ru');
+  const [showTooltip, setShowTooltip] = useState(false);
 
-  // Восстановление истории (ИЗОЛЯЦИЯ: сохраняется только в браузере пользователя)
   useEffect(() => {
-    const saved = localStorage.getItem('pulse_chat_history');
-    if (saved) {
+    const detectLang = () => {
       try {
-        setMessages(JSON.parse(saved));
-      } catch (e) {
-        console.error('Error parsing chat history', e);
+        const browserLang = navigator.language.split('-')[0];
+        if (browserLang === 'tr') setLang('tr');
+        else if (browserLang === 'en') setLang('en');
+        else setLang('ru');
+      } catch (e) {}
+    };
+    detectLang();
+
+    // Listen to lang changes or HTML lang attribute updates
+    const interval = setInterval(() => {
+      const htmlLang = document.documentElement.lang;
+      if (htmlLang === 'tr' || htmlLang === 'en' || htmlLang === 'ru') {
+        setLang(htmlLang as any);
       }
-    } else {
-      // Приветственное сообщение
-      setMessages([
-        {
-          id: 'welcome',
-          role: 'assistant',
-          content: 'Привет! Я ИИ-помощник PulseMarket. Я могу помочь найти объявления, ответить на вопросы по сайту или подсказать, как разместить лот. Чем могу помочь?',
-          timestamp: Date.now(),
-        }
-      ]);
-    }
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Сохранение истории при изменении
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem('pulse_chat_history', JSON.stringify(messages));
-    }
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen]);
-
-  const handleSend = async () => {
-    if (!input.trim()) return;
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input.trim(),
-      timestamp: Date.now(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsTyping(true);
-
-    try {
-      // Получаем id пользователя, если он авторизован
-      const userStr = localStorage.getItem('pulse_user');
-      let userId = 'guest';
-      if (userStr) {
-        try {
-           const u = JSON.parse(userStr);
-           userId = u.telegram_id || 'guest';
-        } catch(e){}
-      }
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          messages: [...messages, userMessage].map(m => ({ role: m.role, content: m.content })),
-          userId 
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.reply) {
-        setMessages(prev => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: data.reply,
-            timestamp: Date.now(),
-          }
-        ]);
-      } else {
-        throw new Error('No reply from API');
-      }
-    } catch (error) {
-      console.error('Chat API Error:', error);
-      setMessages(prev => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: 'Простите, сейчас я не могу ответить. Пожалуйста, попробуйте позже или напишите в техподдержку @BotHelpG_bot.',
-          timestamp: Date.now(),
-        }
-      ]);
-    } finally {
-      setIsTyping(false);
-    }
-  };
+  const tooltipText = tooltips[lang];
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end">
-      {/* Окно чата */}
-      {isOpen && (
-        <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 mb-4 w-[350px] max-h-[500px] flex flex-col overflow-hidden animate-in slide-in-from-bottom-5">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-4 flex justify-between items-center text-white">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                <Bot size={20} />
-              </div>
-              <div>
-                <h3 className="font-bold text-sm">PulseMarket AI</h3>
-                <p className="text-[10px] text-blue-100">Консультант & Поддержка</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => setIsOpen(false)}
-              className="text-white/80 hover:text-white transition-colors"
-            >
-              <X size={20} />
-            </button>
-          </div>
+    <div className="fixed bottom-6 right-6 z-[9999] flex items-center justify-end">
+      {/* Tooltip on the left */}
+      <div 
+        className={`mr-3 bg-slate-900/95 text-white text-xs font-black py-2.5 px-4 rounded-2xl border border-white/10 shadow-2xl backdrop-blur-md transition-all duration-300 transform whitespace-nowrap pointer-events-none ${
+          showTooltip 
+            ? 'opacity-100 translate-x-0 scale-100' 
+            : 'opacity-0 translate-x-4 scale-95'
+        }`}
+      >
+        {tooltipText}
+      </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 max-h-[350px]">
-            {messages.map((msg) => (
-              <div 
-                key={msg.id} 
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div 
-                  className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${
-                    msg.role === 'user' 
-                      ? 'bg-blue-600 text-white rounded-br-none' 
-                      : 'bg-white text-gray-800 border border-gray-100 shadow-sm rounded-bl-none'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              </div>
-            ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="bg-white text-gray-500 border border-gray-100 shadow-sm rounded-2xl rounded-bl-none px-4 py-3 text-sm flex gap-1 items-center">
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          <div className="p-3 bg-white border-t border-gray-100">
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-full pr-1 pl-4 py-1">
-              <input 
-                type="text" 
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Задайте вопрос..."
-                className="flex-1 bg-transparent border-none outline-none text-sm py-2"
-              />
-              <button 
-                onClick={handleSend}
-                disabled={!input.trim() || isTyping}
-                className="bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                <Send size={16} />
-              </button>
-            </div>
+      {/* Floating Support Button linked to Telegram */}
+      <a
+        href="https://t.me/BotHelpG_bot?start=support"
+        target="_blank"
+        rel="noopener noreferrer"
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        className="relative flex items-center justify-center w-14 h-14 bg-gradient-to-tr from-blue-500 via-blue-600 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-full shadow-lg shadow-blue-500/40 transition-all duration-300 hover:scale-110 active:scale-95 group"
+        aria-label={tooltipText}
+      >
+        {/* Pulsing ambient border glow */}
+        <span className="absolute -inset-1 rounded-full bg-blue-500/30 animate-pulse pointer-events-none blur-sm opacity-70 group-hover:opacity-100 transition-opacity"></span>
+        <span className="absolute inset-0 rounded-full bg-blue-500/20 animate-ping pointer-events-none opacity-40"></span>
+        
+        {/* Container for Telegram logo and Support badge */}
+        <div className="relative flex items-center justify-center w-full h-full">
+          {/* Telegram Logo SVG */}
+          <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.15)] transition-transform duration-500 group-hover:rotate-12 group-hover:scale-105" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.11.02-1.89 1.2-5.33 3.52-.5.35-.96.52-1.37.51-.45-.01-1.32-.26-1.97-.47-.8-.26-1.43-.4-1.37-.85.03-.23.35-.47.96-.72 3.76-1.63 6.27-2.71 7.54-3.23 3.58-1.48 4.32-1.74 4.81-1.75.11 0 .35.03.5.16.13.1.17.24.19.34.02.07.03.22.02.34z"/>
+          </svg>
+          
+          {/* Badge overlay representing complaints / support */}
+          <div className="absolute -top-1.5 -right-1.5 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-full p-1 border-2 border-white dark:border-slate-900 shadow-md flex items-center justify-center w-6 h-6 transition-all duration-300 group-hover:scale-110">
+            <span className="text-[10px] leading-none animate-pulse">🚨</span>
           </div>
         </div>
-      )}
-
-      {/* Кнопка открытия */}
-      {!isOpen && (
-        <button 
-          onClick={() => setIsOpen(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30 transition-transform hover:scale-105 active:scale-95"
-        >
-          <MessageCircle size={28} />
-        </button>
-      )}
+      </a>
     </div>
   );
 }
