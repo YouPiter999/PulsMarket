@@ -65,6 +65,102 @@ export function getTranslatedField(item: any, field: string, lang: string) {
   return item[field] || '';
 }
 
+export function cleanListingTitle(title: string) {
+  let cleaned = title || '';
+  if (cleaned.includes('\n')) {
+    cleaned = cleaned.split('\n')[0];
+  }
+  cleaned = cleaned.trim();
+  cleaned = cleaned.replace(/\+?\d[\d\s\-\(\)]{7,20}\d/g, '');
+  cleaned = cleaned.replace(/@\w+/g, '');
+  cleaned = cleaned.replace(/https?:\/\/\S+/gi, '');
+  cleaned = cleaned.replace(/tg:\/\/join\S+/gi, '');
+  cleaned = cleaned.replace(/^[\s\-•*|,:;!_?~+=[\]{}()<>]+|[\s\-•*|,:;!_?~+=[\]{}()<>]+$/g, '');
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  if (cleaned.length > 55) {
+    cleaned = cleaned.substring(0, 55).trim() + '...';
+  }
+  return cleaned || 'Без названия';
+}
+
+export function getFormattedPrice(price: any, currency: string, lang: 'ru' | 'en' | 'tr') {
+  const numPrice = Number(price);
+  if (isNaN(numPrice) || numPrice <= 0) {
+    return lang === 'ru' ? 'Цена договорная' : lang === 'tr' ? 'Fiyat Sorunuz' : 'Price on request';
+  }
+  const formattedVal = numPrice.toLocaleString(lang === 'ru' ? 'ru-RU' : lang === 'tr' ? 'tr-TR' : 'en-US');
+  const currencySymbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'TRY' ? 'TL' : currency;
+  if (currency === 'USD' || currency === 'GBP') {
+    return `${currencySymbol} ${formattedVal}`;
+  }
+  return `${formattedVal} ${currencySymbol}`;
+}
+
+export function getLocationLabel(locationStr: string) {
+  if (!locationStr) return '';
+  const match = locationStr.match(/\(([^)]+)\)/);
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  return locationStr.split(',')[0].split(' ')[0].replace(/[^a-zA-Zа-яА-Я0-9-]/g, '').trim();
+}
+
+export function getDealTypeLabel(item: any, lang: 'ru' | 'en' | 'tr') {
+  const dealType = getListingSubcategory(item.title || '', item.description || '', item.category || '', Number(item.price || 0));
+  if (dealType === 'Сдаю') {
+    return lang === 'ru' ? 'Аренда' : lang === 'tr' ? 'Kiralık' : 'Rent';
+  }
+  if (dealType === 'Продам') {
+    return lang === 'ru' ? 'Продажа' : lang === 'tr' ? 'Satılık' : 'Sale';
+  }
+  if (dealType === 'Сниму') {
+    return lang === 'ru' ? 'Спрос (аренда)' : lang === 'tr' ? 'Kiralık arıyor' : 'Rent demand';
+  }
+  if (dealType === 'Куплю') {
+    return lang === 'ru' ? 'Спрос (покупка)' : lang === 'tr' ? 'Satın almak istiyor' : 'Buy demand';
+  }
+  return lang === 'ru' ? 'Объявление' : lang === 'tr' ? 'İlan' : 'Listing';
+}
+
+export function getSourceInfo(item: any, lang: 'ru' | 'en' | 'tr') {
+  const sourceLower = String(item.source || '').toLowerCase();
+  if (sourceLower.includes('northcyprus_island') || item.is_priority) {
+    return {
+      label: lang === 'ru' ? 'Официальный' : lang === 'tr' ? 'Resmi' : 'Official',
+      icon: '👑',
+      isOfficial: true
+    };
+  }
+  if (sourceLower.includes('личные сообщения боту')) {
+    return {
+      label: lang === 'ru' ? 'Пользователь' : lang === 'tr' ? 'Kullanıcı' : 'User',
+      icon: '👤',
+      isOfficial: false
+    };
+  }
+  if (sourceLower.includes('bazaraki')) {
+    return { label: 'Bazaraki', icon: '🌐', isOfficial: false };
+  }
+  if (sourceLower.includes('101evler')) {
+    return { label: '101evler', icon: '🌐', isOfficial: false };
+  }
+  if (sourceLower.includes('kktcarabam')) {
+    return { label: 'KKTCArabam', icon: '🌐', isOfficial: false };
+  }
+  if (sourceLower.includes('telegram')) {
+    const cleanName = String(item.source || '')
+      .replace(/Telegram\s\(@/gi, '')
+      .replace(/\)/gi, '')
+      .replace(/Recovery/gi, '')
+      .trim();
+    return { label: cleanName || 'Telegram', icon: '📱', isOfficial: false };
+  }
+  return {
+    label: lang === 'ru' ? 'Пользователь' : lang === 'tr' ? 'Kullanıcı' : 'User',
+    icon: '👤',
+    isOfficial: false
+  };
+}
 
 function formatAdsPlural(count: number, lang: string) {
   if (lang === 'tr') return `${count} ilan`;
