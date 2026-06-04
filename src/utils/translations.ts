@@ -165,15 +165,18 @@ export function getListingSubcategory(title: string = '', description: string = 
     return 'Куплю';
   }
   if (
-    text.includes('сдам') || text.includes('сдаю') || text.includes('сдаётся') || text.includes('аренда') || 
+    text.includes('сдам') || text.includes('сдаю') || text.includes('сдаётся') || text.includes('аренд') || 
     text.includes('rent a car') || text.includes('car rental') || text.includes('kiralık') || 
     text.includes('kiralik') || text.includes('for rent') || text.includes('прокат') ||
-    text.includes('аренду')
+    text.includes('субаренд')
   ) {
     return 'Сдаю';
   }
   if (text.includes('продам') || text.includes('продаю') || text.includes('продается') || text.includes('продаётся') || text.includes('продажа') || text.includes('satılık') || text.includes('satilik') || text.includes('sale') || text.includes('for sale')) {
     return 'Продам';
+  }
+  if (category === 'Недвижимость' && price > 0 && price < 15000) {
+     return 'Сдаю';
   }
   if (category === 'Транспорт' && price > 0 && price < 2500) {
      return 'Сдаю';
