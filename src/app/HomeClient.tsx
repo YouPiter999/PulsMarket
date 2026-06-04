@@ -1708,8 +1708,6 @@ export default function HomeClient({
                     }} 
                     className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-6 sm:gap-x-6 sm:gap-y-10"
                   >
-                    {/* The real SUPER VIP AD will be the first item rendered by the map below */}
-                    
                     {marketplaceListings.slice(0, visibleCount).map((item, index) => {
                       const isFPY = item.id === 'FPY37jBN5znxPfuN1FNt';
 
@@ -1766,17 +1764,95 @@ export default function HomeClient({
                                 </div>
                                 
                                 <div className="px-2 pb-2 flex flex-col flex-1 z-10">
-                                   <h3 className="text-sm sm:text-base font-black text-white leading-snug group-hover:text-amber-300 transition-colors line-clamp-2 mb-1" title={item.title}>
-                                     {getTranslatedField(item, 'title', lang)}
+                                   <h3 className="text-sm sm:text-base font-black text-white leading-snug group-hover:text-amber-300 transition-colors line-clamp-2 mb-1.5" title={item.title}>
+                                     {cleanListingTitle(getTranslatedField(item, 'title', lang))}
                                    </h3>
-                                   <div className="text-xl sm:text-2xl font-black text-amber-400 mb-1">
-                                     {Number(item.price).toLocaleString()} <span className="text-sm font-bold">{item.currency}</span>
+                                   <div className="text-xl font-black text-amber-400 mb-2.5">
+                                     {getFormattedPrice(item.price, item.currency, lang)}
                                    </div>
-                                   <p className="text-[10px] sm:text-xs text-slate-300 font-medium leading-relaxed line-clamp-2 mt-auto">
-                                     {getTranslatedField(item, 'description', lang)}
-                                   </p>
-                                   <div className="flex items-center gap-1 mt-2 text-[10px] sm:text-xs text-slate-400">
-                                     <span>📍</span> {getTranslatedField(item, 'location', lang)}
+
+                                   <div className="flex flex-wrap gap-1.5 mb-3.5 mt-auto">
+                                     {/* Тег 1: Аренда/Продажа */}
+                                     {(() => {
+                                       const dealType = getListingSubcategory(item.title || '', item.description || '', item.category || '', Number(item.price || 0));
+                                       const dealTypeLabel = getDealTypeLabel(item, lang);
+                                       return (
+                                         <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
+                                           dealType === 'Сдаю'
+                                             ? 'bg-blue-500/20 text-blue-300 border-blue-400/30'
+                                             : dealType === 'Продам'
+                                             ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                                             : 'bg-amber-500/20 text-amber-300 border-amber-400/30'
+                                         }`}>
+                                           {dealTypeLabel}
+                                         </span>
+                                       );
+                                     })()}
+
+                                     {/* Тег 2: Район */}
+                                     {(() => {
+                                       const locLabel = getLocationLabel(getTranslatedField(item, 'location', lang));
+                                       if (!locLabel) return null;
+                                       return (
+                                         <span className="bg-slate-800/80 text-slate-200 border border-slate-700/50 text-[10px] font-bold px-2 py-0.5 rounded-md truncate max-w-[110px]" title={getTranslatedField(item, 'location', lang)}>
+                                           📍 {locLabel}
+                                         </span>
+                                       );
+                                     })()}
+
+                                     {/* Тег 3: Тип (Категория) */}
+                                     {(() => {
+                                       const catObj = categories.find(c => c.id === item.category);
+                                       const categoryLabel = catObj ? catObj.name : item.category;
+                                       return (
+                                         <span className="bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                           {categoryLabel}
+                                         </span>
+                                       );
+                                     })()}
+
+                                     {/* Доп. теги из метаданных (комнаты, год, пробег) */}
+                                     {item.metadata?.rooms && (
+                                       <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                         🛏️ {item.metadata.rooms}
+                                       </span>
+                                     )}
+                                     {item.metadata?.area && (
+                                       <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                         📐 {item.metadata.area} м²
+                                       </span>
+                                     )}
+                                     {item.metadata?.year && (
+                                       <span className="bg-slate-800/80 text-slate-200 border border-slate-700/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                         📅 {item.metadata.year}
+                                       </span>
+                                     )}
+                                     {item.metadata?.mileage && (
+                                       <span className="bg-amber-500/20 text-amber-300 border border-amber-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                         🛣️ {Number(item.metadata.mileage).toLocaleString()} км
+                                       </span>
+                                     )}
+                                   </div>
+
+                                   <div className="flex items-center justify-between pt-2.5 border-t border-white/10 text-[11px] text-slate-300 font-medium">
+                                     {/* Дата */}
+                                     <div className="flex items-center gap-1">
+                                       <span>📅</span>
+                                       <span>
+                                         {new Date(item.createdAt).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' })}
+                                       </span>
+                                     </div>
+
+                                     {/* Источник */}
+                                     {(() => {
+                                       const srcInfo = getSourceInfo(item, lang);
+                                       return (
+                                         <div className="flex items-center gap-1 shrink-0 text-amber-300" title={item.source}>
+                                           <span>{srcInfo.icon}</span>
+                                           <span className="font-semibold">{srcInfo.label}</span>
+                                         </div>
+                                       );
+                                     })()}
                                    </div>
                                 </div>
                               </div>
@@ -1851,7 +1927,7 @@ export default function HomeClient({
                                );
                              })() : (String(item.source || '').toLowerCase().includes('личные сообщения боту')) ? (() => {
                                return (
-                                 <div className={`absolute bottom-3 left-3 bg-gradient-to-r from-emerald-500 to-teal-600 shadow-emerald-500/40 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1.5 z-20`}>
+                                 <div className={`absolute bottom-3 left-3 bg-gradient-to-r from-emerald-50 to-teal-600 shadow-emerald-500/40 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1.5 z-20`}>
                                    <span>✅</span>
                                    <span>{lang === 'ru' ? 'ОТ ПОЛЬЗОВАТЕЛЯ' : 'VERIFIED'}</span>
                                  </div>
