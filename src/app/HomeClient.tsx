@@ -1207,7 +1207,7 @@ export default function HomeClient({
             location: 'Искеле',
             createdAt: '2026-06-03T17:00:00.000Z',
             username: '@KseniaBorodina',
-            description: '🎓 Подарите вашему ребенку уверенный старт!\nПриглашаю малышей и дошкольников на комплексные занятия.\n📚 Обучение: Чтение, Письмо, Математика.\n🗣 Логопедия: бережный запуск речи, постановка звуков.\n📍 Локация: Искеле.\nПисать @KseniaBorodina',
+            description: '🎓 Подарите вашему ребенку уверенный старт!\nПриглашаю малышей и дошкольников на комплексные индивидуальные занятия. Помогу освоить базовые навыки, полюбить учебу и научиться говорить правильно и красиво!\n\n📚 Обучение и подготовка:\n• Чтение: от изучения букв до беглого и осознанного чтения.\n• Письмо: правильная постановка руки и уверенные первые строчки.\n• Математика: увлекательное знакомство с цифрами, логикой и счетом.\n\n🗣 Логопедия и развитие речи:\n• Помогу вашему ребенку заговорить (бережный запуск речи).\n• Профессиональная постановка звуков и коррекция дикции.\n\n📍 Локация: Индивидуальные занятия в Искеле.\n\n👉 Запишитесь на первое занятие прямо сейчас и подарите своему ребенку уверенность в собственных силах!\n📩 Для записи и вопросов пишите @KseniaBorodina',
             image_url: 'https://i.ibb.co/PztD3VYF/0742848d8de6.jpg',
             source: 'Telegram (@northcyprus_island)',
             country: 'Северный Кипр',
@@ -1711,9 +1711,34 @@ export default function HomeClient({
                     {/* The real SUPER VIP AD will be the first item rendered by the map below */}
                     
                     {marketplaceListings.slice(0, visibleCount).map((item, index) => {
-                      if (item.id === 'FPY37jBN5znxPfuN1FNt') {
-                        return (
-                          <Fragment key={item.id}>
+                      const isFPY = item.id === 'FPY37jBN5znxPfuN1FNt';
+
+                      return (
+                        <Fragment key={item.id}>
+                          {index === 1 && (
+                            <>
+                              <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }}>
+                                {renderSuperVipCard()}
+                              </motion.div>
+                              <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }}>
+                                {renderVoicePromoCard()}
+                              </motion.div>
+                            </>
+                          )}
+                          {index === (firstNonOfficialIndex !== -1 ? firstNonOfficialIndex : 1) && (
+                            <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }}>
+                                {renderPriorityCard()}
+                            </motion.div>
+                          )}
+                          
+                          {/* Баннерная реклама каждые 12 карточек */}
+                          {index > 0 && index % 12 === 0 && (
+                            <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} className="col-span-2 lg:col-span-3">
+                              <BannerAd lang={lang} position="feed" />
+                            </motion.div>
+                          )}
+
+                          {isFPY ? (
                             <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }}>
                             <Link href={`/listing/${item.id}`} className="group cursor-pointer block h-full min-h-[340px] sm:min-h-[380px]">
                               <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-900 shadow-xl border border-indigo-500/30 flex flex-col p-1.5 transition-all duration-300 hover:shadow-indigo-500/40 hover:-translate-y-1 h-full">
@@ -1757,37 +1782,9 @@ export default function HomeClient({
                               </div>
                             </Link>
                             </motion.div>
-                          </Fragment>
-                        );
-                      }
-                      
-                      return (
-                        <Fragment key={item.id}>
-                          {index === 1 && (
-                            <>
-                              <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }}>
-                                {renderSuperVipCard()}
-                              </motion.div>
-                              <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }}>
-                                {renderVoicePromoCard()}
-                              </motion.div>
-                            </>
-                          )}
-                          {index === (firstNonOfficialIndex !== -1 ? firstNonOfficialIndex : 1) && (
-                            <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }}>
-                                {renderPriorityCard()}
-                            </motion.div>
-                          )}
-                          
-                          {/* Баннерная реклама каждые 12 карточек */}
-                          {index > 0 && index % 12 === 0 && (
-                            <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} className="col-span-2 lg:col-span-3">
-                              <BannerAd lang={lang} position="feed" />
-                            </motion.div>
-                          )}
-
-                          <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }} className="h-full">
-                            <Link href={`/listing/${item.id}`} className="group cursor-pointer block h-full">
+                          ) : (
+                            <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }} className="h-full">
+                              <Link href={`/listing/${item.id}`} className="group cursor-pointer block h-full">
                           <div className={`relative aspect-[4/3] rounded-2xl overflow-hidden mb-3 glass-card transition-all duration-300 ${
                             item.is_vip
                               ? 'ring-2 ring-amber-400/70 shadow-[0_0_25px_rgba(251,191,36,0.5)]'
@@ -1897,6 +1894,7 @@ export default function HomeClient({
                           </div>
                         </Link>
                         </motion.div>
+                        )}
 
                         {(index > firstNonOfficialIndex && (index - firstNonOfficialIndex) % 18 === 0) && (
                           <div className="col-span-full my-6 px-1">
