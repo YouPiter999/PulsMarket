@@ -2049,118 +2049,166 @@ export default function HomeClient({
                             </motion.div>
                           ) : (
                             <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} whileHover={{ y: -5 }} className="h-full">
-                              <Link href={`/listing/${item.id}`} className="group cursor-pointer block h-full">
-                          <div className={`relative aspect-[4/3] rounded-2xl overflow-hidden mb-3 glass-card transition-all duration-300 ${
-                            item.is_vip
-                              ? 'ring-2 ring-amber-400/70 shadow-[0_0_25px_rgba(251,191,36,0.5)]'
-                              : item.is_priority
-                              ? 'ring-2 ring-amber-500/50 shadow-[0_0_20px_rgba(245,158,11,0.4)]'
-                              : String(item.source || '').toLowerCase().includes('northcyprus_island')
-                              ? 'ring-2 ring-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.4)]'
-                              : ''
-                          }`}>
-                            {(item.image_url && item.image_url !== 'None' && item.image_url !== 'null' && item.image_url !== 'undefined' && item.image_url !== '[]') ? (
-                              <img 
-                                src={item.image_url} 
-                                alt={item.title} 
-                                loading="lazy"
-                                decoding="async"
-                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                              />
-                            ) : (
-                              <img 
-                                src="/promo_banner.webp" 
-                                alt="PulseMarket Promo" 
-                                loading="lazy"
-                                decoding="async"
-                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                              />
-                            )}
-                            <div className="absolute top-3 right-3 flex flex-col gap-2 z-30">
-                              <button 
-                                onClick={(e) => toggleFavorite(item.id, e)}
-                                className={`backdrop-blur-md p-2 rounded-xl shadow-lg transition-all flex items-center justify-center border ${favorites.includes(item.id) ? 'bg-white border-red-100 text-red-500 scale-105 shadow-red-100' : 'bg-white/90 border-white/20 text-gray-500 hover:text-red-500 hover:scale-105'}`}
-                                title={favorites.includes(item.id) ? 'Удалить из избранного' : 'В избранное'}
-                              >
-                                {favorites.includes(item.id) ? '❤️' : '🤍'}
-                              </button>
-                            </div>
-                            
-                            {item.is_vip && (
-                              <div className="absolute top-3 left-3 z-30">
-                                <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[9px] sm:text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse border border-amber-300/50">
-                                  <span>⭐</span>
-                                  <span>VIP</span>
+                            <Link href={`/listing/${item.id}`} className="group cursor-pointer block h-full">
+                              <div className={`relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-900 shadow-xl flex flex-col p-1.5 transition-all duration-300 hover:-translate-y-1 h-full ${
+                                item.is_vip
+                                  ? 'border-2 border-amber-400/60 hover:shadow-amber-500/30'
+                                  : item.is_priority
+                                  ? 'border-2 border-amber-500/40 hover:shadow-amber-500/20'
+                                  : String(item.source || '').toLowerCase().includes('northcyprus_island')
+                                  ? 'border-2 border-emerald-500/40 hover:shadow-emerald-500/20'
+                                  : 'border border-indigo-500/30 hover:shadow-indigo-500/30'
+                              }`}>
+                                <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 opacity-60 pointer-events-none group-hover:opacity-80 transition-all duration-700" />
+                                
+                                <div className="absolute top-3 left-3 z-30 flex gap-2">
+                                  {item.is_vip && (
+                                    <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[9px] sm:text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse border border-amber-300/50">
+                                      <span>⭐</span>
+                                      <span>VIP</span>
+                                    </div>
+                                  )}
+                                  {item.is_priority && !item.is_vip && (
+                                    <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[9px] sm:text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 border border-amber-300/50">
+                                      <span>⚡</span>
+                                      <span>{lang === 'ru' ? 'ПРИОРИТЕТ' : 'PRIORITY'}</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="absolute top-3 right-3 z-30 flex gap-2">
+                                  <button onClick={(e) => toggleFavorite(item.id, e)} className={`backdrop-blur-md p-1.5 sm:p-2 rounded-xl shadow-lg transition-all flex items-center justify-center border ${favorites.includes(item.id) ? 'bg-white border-red-100 text-red-500' : 'bg-white/10 border-white/20 text-white/70 hover:text-red-400'}`}>
+                                    {favorites.includes(item.id) ? '❤️' : '🤍'}
+                                  </button>
+                                </div>
+
+                                <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden mb-2">
+                                  {(item.image_url && item.image_url !== 'None' && item.image_url !== 'null' && item.image_url !== 'undefined' && item.image_url !== '[]') ? (
+                                    <img src={item.image_url} alt={item.title} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                  ) : (
+                                    <img src="/promo_banner.webp" alt="PulseMarket Promo" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                  )}
+
+                                  {(String(item.source || '').toLowerCase().includes('northcyprus_island')) ? (() => {
+                                    const cleanName = (item.source || '')
+                                      .replace(/Telegram\s\(@/gi, '')
+                                      .replace(/\)/gi, '')
+                                      .replace(/Recovery/gi, '')
+                                      .trim();
+                                    return (
+                                      <div className="absolute bottom-2 left-2 bg-gradient-to-r from-emerald-600 to-teal-600 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 py-0.5 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1 cursor-pointer transition-all hover:scale-110 z-20"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          const u = String(cleanName).replace('@','').trim();
+                                          if(u) window.open('https://t.me/' + u, '_blank');
+                                        }}
+                                        title={'Открыть канал'}
+                                      >
+                                        <span>👑</span>
+                                        <span>{lang === 'ru' ? 'ОФИЦИАЛЬНЫЙ' : 'OFFICIAL'}</span>
+                                      </div>
+                                    );
+                                  })() : (String(item.source || '').toLowerCase().includes('личные сообщения боту')) ? (
+                                    <div className="absolute bottom-2 left-2 bg-gradient-to-r from-emerald-600 to-teal-600 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 py-0.5 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1 z-20">
+                                      <span>✅</span>
+                                      <span>{lang === 'ru' ? 'ОТ ПОЛЬЗОВАТЕЛЯ' : 'VERIFIED'}</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                                
+                                <div className="px-2 pb-2 flex flex-col flex-1 z-10">
+                                   <h3 className="text-sm sm:text-base font-black text-white leading-snug group-hover:text-amber-300 transition-colors line-clamp-2 mb-1.5" title={item.title}>
+                                     {cleanListingTitle(getTranslatedField(item, 'title', lang))}
+                                   </h3>
+                                   <div className="text-xl font-black text-red-400 mb-2.5">
+                                     {getFormattedPrice(item.price, item.currency, lang)}
+                                   </div>
+
+                                   <div className="flex flex-wrap gap-1.5 mb-3.5 mt-auto">
+                                     {/* Тег: Аренда/Продажа */}
+                                     {(() => {
+                                       const dealType = getListingSubcategory(item.title || '', item.description || '', item.category || '', Number(item.price || 0));
+                                       const dealTypeLabel = getDealTypeLabel(item, lang);
+                                       return (
+                                         <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
+                                           dealType === 'Сдаю'
+                                             ? 'bg-blue-500/20 text-blue-300 border-blue-400/30'
+                                             : dealType === 'Продам'
+                                             ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                                             : 'bg-amber-500/20 text-amber-300 border-amber-400/30'
+                                         }`}>
+                                           {dealTypeLabel}
+                                         </span>
+                                       );
+                                     })()}
+
+                                     {/* Тег: Район */}
+                                     {(() => {
+                                       const locLabel = getLocationLabel(getTranslatedField(item, 'location', lang));
+                                       if (!locLabel) return null;
+                                       return (
+                                         <span className="bg-slate-800/80 text-slate-200 border border-slate-700/50 text-[10px] font-bold px-2 py-0.5 rounded-md truncate max-w-[110px]" title={getTranslatedField(item, 'location', lang)}>
+                                           📍 {locLabel}
+                                         </span>
+                                       );
+                                     })()}
+
+                                     {/* Тег: Категория */}
+                                     {(() => {
+                                       const catObj = categories.find(c => c.id === item.category);
+                                       const categoryLabel = catObj ? catObj.name : item.category;
+                                       return (
+                                         <span className="bg-purple-500/20 text-purple-300 border border-purple-400/30 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                                           {categoryLabel}
+                                         </span>
+                                       );
+                                     })()}
+
+                                     {/* Доп. теги из метаданных */}
+                                     {item.metadata?.rooms && (
+                                       <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                         🛏️ {item.metadata.rooms}
+                                       </span>
+                                     )}
+                                     {item.metadata?.area && (
+                                       <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                         📐 {item.metadata.area} м²
+                                       </span>
+                                     )}
+                                     {item.metadata?.year && (
+                                       <span className="bg-slate-800/80 text-slate-200 border border-slate-700/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                         📅 {item.metadata.year}
+                                       </span>
+                                     )}
+                                     {item.metadata?.mileage && (
+                                       <span className="bg-amber-500/20 text-amber-300 border border-amber-400/30 text-[10px] font-bold px-1.5 py-0.5 rounded-md">
+                                         🛣️ {Number(item.metadata.mileage).toLocaleString()} км
+                                       </span>
+                                     )}
+                                   </div>
+
+                                   <div className="flex items-center justify-between pt-2.5 border-t border-white/10 text-[11px] text-slate-300 font-medium">
+                                     <div className="flex items-center gap-1">
+                                       <span>📅</span>
+                                       <span>
+                                         {new Date(item.createdAt).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' })}
+                                       </span>
+                                     </div>
+                                     {(() => {
+                                       const srcInfo = getSourceInfo(item, lang);
+                                       return (
+                                         <div className="flex items-center gap-1 shrink-0 text-amber-300" title={item.source}>
+                                           <span>{srcInfo.icon}</span>
+                                           <span className="font-semibold">{srcInfo.label}</span>
+                                         </div>
+                                       );
+                                     })()}
+                                   </div>
                                 </div>
                               </div>
-                            )}
-                            
-                            {(String(item.source || '').toLowerCase().includes('northcyprus_island')) ? (() => {
-                               const cleanName = (item.source || '')
-                                 .replace(/Telegram\s\(@/gi, '')
-                                 .replace(/\)/gi, '')
-                                 .replace(/Recovery/gi, '')
-                                 .trim();
-                               
-                               return (
-                                 <div className={`absolute bottom-3 left-3 bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-500/20 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1.5 cursor-pointer transition-all hover:scale-110 hover:brightness-110 z-20`}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      const u = String(cleanName).replace('@','').trim();
-                                      if(u) window.open('https://t.me/' + u, '_blank');
-                                    }}
-                                    title={'Открыть канал'}
-                                  >
-                                   <span>👑</span>
-                                   <span>{lang === 'ru' ? 'ОФИЦИАЛЬНЫЙ КАНАЛ' : 'OFFICIAL CHANNEL'}</span>
-                                 </div>
-                               );
-                             })() : (String(item.source || '').toLowerCase().includes('личные сообщения боту')) ? (() => {
-                               return (
-                                 <div className={`absolute bottom-3 left-3 bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-500/20 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1.5 z-20`}>
-                                   <span>✅</span>
-                                   <span>{lang === 'ru' ? 'ОТ ПОЛЬЗОВАТЕЛЯ' : 'VERIFIED'}</span>
-                                 </div>
-                               );
-                             })() : null}
-                          </div>
-                          
-                          <div className="px-1">
-                            <h3 className="text-lg font-medium text-gray-900 leading-tight mb-1 line-clamp-2 group-hover:text-blue-600 transition-colors" title={item.title}>
-                              {getTranslatedField(item, 'title', lang)}
-                            </h3>
-                            
-                            {(item.metadata?.year || item.metadata?.rooms || item.metadata?.mileage || item.metadata?.area) && (
-                               <div className="flex flex-wrap gap-1.5 mb-2">
-                                  {item.metadata?.year && (
-                                     <span className="bg-slate-100 text-slate-700 text-[10px] font-bold px-1.5 py-0.5 rounded">📅 {item.metadata.year}</span>
-                                  )}
-                                  {item.metadata?.rooms && (
-                                     <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded">🛏️ {item.metadata.rooms}</span>
-                                  )}
-                                  {item.metadata?.area && (
-                                     <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-1.5 py-0.5 rounded">📐 {item.metadata.area} м²</span>
-                                  )}
-                                  {item.metadata?.mileage && (
-                                     <span className="bg-amber-50 text-amber-800 text-[10px] font-bold px-1.5 py-0.5 rounded">🛣️ {Number(item.metadata.mileage).toLocaleString()} км</span>
-                                  )}
-                               </div>
-                            )}
-                            <div className="text-2xl font-black text-gray-900 mb-2">
-                              {Number(item.price).toLocaleString()} <span className="text-lg font-bold">{item.currency}</span>
-                            </div>
-                            <div className="flex flex-col gap-1 text-sm text-gray-500">
-                              <div className="flex items-center gap-1">
-                                <span>📍</span> {getTranslatedField(item, 'location', lang)}
-                              </div>
-                              <div className="text-gray-500 mt-1">
-                                {new Date(item.createdAt).toLocaleDateString(lang === 'ru' ? 'ru-RU' : lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'long' })}
-                              </div>
-                            </div>
-                          </div>
-                        </Link>
-                        </motion.div>
+                            </Link>
+                            </motion.div>
                         )}
 
                         {(index > firstNonOfficialIndex && (index - firstNonOfficialIndex) % 18 === 0) && (
