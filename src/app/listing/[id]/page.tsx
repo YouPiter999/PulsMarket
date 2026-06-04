@@ -20,6 +20,7 @@ export const STATIC_VIP_LISTINGS: Record<string, Listing> = {
     source: 'Telegram (@northcyprus_island)',
     country: 'Северный Кипр',
     is_priority: true,
+    is_vip: true,
     metadata: { rooms: '' }
   },
   'FPY37jBN5znxPfuN1FNt': {
@@ -36,6 +37,7 @@ export const STATIC_VIP_LISTINGS: Record<string, Listing> = {
     source: 'Telegram (@northcyprus_island)',
     country: 'Северный Кипр',
     is_priority: true,
+    is_vip: true,
     metadata: { rooms: '1+2' }
   }
 };

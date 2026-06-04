@@ -254,6 +254,7 @@ export async function GET(request: Request) {
           source: 'Telegram (@northcyprus_island)',
           country: 'Северный Кипр',
           is_priority: true,
+          is_vip: true,
           metadata: { rooms: '' }
         });
       }
@@ -272,6 +273,7 @@ export async function GET(request: Request) {
           source: 'Telegram (@northcyprus_island)',
           country: 'Северный Кипр',
           is_priority: true,
+          is_vip: true,
           metadata: { rooms: '1+2' }
         });
       }

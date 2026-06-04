@@ -352,11 +352,15 @@ export default function ListingDetailClient({ initialListing }: { initialListing
                  <div className="text-xs font-bold text-blue-600 uppercase tracking-wider bg-blue-50 px-3 py-1 rounded-full w-max">
                     {listing.category}
                  </div>
-                 {listing.is_vip && (
-                    <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse">
-                       ⭐ VIP
-                    </div>
-                 )}
+                  {(listing.id === 'FPY37jBN5znxPfuN1FNt' || listing.id === 'tg_150385_super_vip') ? (
+                     <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-blue-950 text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse border border-amber-300/50">
+                        👑 {lang === 'ru' ? 'СУПЕР ВИП ЗАКРЕП' : 'SUPER VIP PIN'}
+                     </div>
+                  ) : listing.is_vip ? (
+                     <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse">
+                        ⭐ VIP
+                     </div>
+                  ) : null}
                  {listing.is_priority && listing.source && (() => {
                     const cleanName = (listing.source || '')
                        .replace(/Telegram\s\(@/gi, '')
