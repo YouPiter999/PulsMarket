@@ -197,6 +197,7 @@ export default function HomeClient({
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalView, setModalView] = useState<'CHOICE' | 'TELEGRAM' | 'WEB'>('CHOICE');
+  const [isStarsModalOpen, setIsStarsModalOpen] = useState(false);
   
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
@@ -417,16 +418,129 @@ export default function HomeClient({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loaderRef = useRef<HTMLDivElement>(null);
 
+  const renderPromoCard = ({
+    badge,
+    badgeType,
+    priceText,
+    icon,
+    title,
+    bullets,
+    buttonText,
+    buttonHref
+  }: {
+    badge: string;
+    badgeType: 'vip' | 'free' | 'priority';
+    priceText: string;
+    icon: string;
+    title: string;
+    bullets: string[];
+    buttonText: string;
+    buttonHref: string;
+  }) => {
+    const styles = {
+      vip: {
+        border: 'border-amber-500/30',
+        shadow: 'hover:shadow-amber-500/10',
+        badgeBg: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950',
+        btnBg: 'bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-yellow-400 hover:to-amber-500 text-blue-950',
+        bulletCheck: 'text-amber-400'
+      },
+      priority: {
+        border: 'border-purple-500/30',
+        shadow: 'hover:shadow-purple-500/10',
+        badgeBg: 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white',
+        btnBg: 'bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-indigo-500 hover:to-purple-600 text-white',
+        bulletCheck: 'text-purple-400'
+      },
+      free: {
+        border: 'border-emerald-500/30',
+        shadow: 'hover:shadow-emerald-500/10',
+        badgeBg: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white',
+        btnBg: 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-teal-500 hover:to-emerald-600 text-white',
+        bulletCheck: 'text-emerald-400'
+      }
+    }[badgeType];
+
+    const showStarsExpl = priceText.includes('★') || priceText.includes('звезд') || priceText.includes('Stars');
+
+    return (
+      <div className={`relative rounded-2xl overflow-hidden bg-slate-900/90 shadow-xl border ${styles.border} flex flex-col justify-between p-5 group transition-all duration-300 ${styles.shadow} hover:-translate-y-1 h-full min-h-[340px] sm:min-h-[380px]`}>
+        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 opacity-60 pointer-events-none group-hover:opacity-80 transition-all duration-700" />
+        
+        <div className="flex flex-col gap-2.5 z-10 w-full">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className={`${styles.badgeBg} text-[9px] sm:text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider shadow-md flex items-center gap-1 shrink-0`}>
+              <span>{icon}</span>
+              <span>{badge}</span>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md px-2 py-1 rounded-lg border border-white/10 shrink-0 flex items-center gap-1">
+              <span className="text-white text-xs sm:text-sm font-black tracking-tight">{priceText}</span>
+              {showStarsExpl && (
+                <button 
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsStarsModalOpen(true); }}
+                  className="text-[10px] text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 w-4 h-4 rounded-full flex items-center justify-center font-bold"
+                  title={lang === 'ru' ? 'Что такое звёзды?' : 'What are Stars?'}
+                >
+                  ?
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+  
+        <div className="z-10 mt-3 flex items-start gap-2.5">
+          <span className="text-2xl mt-0.5 shrink-0">{icon}</span>
+          <h3 className="text-sm sm:text-base font-black text-white leading-snug group-hover:text-indigo-200 transition-colors">
+            {title}
+          </h3>
+        </div>
+
+        <ul className="z-10 mt-3.5 space-y-2 flex-1 text-left">
+          {bullets.map((bullet, idx) => (
+            <li key={idx} className="flex items-start gap-2 text-[11px] sm:text-xs text-slate-300 font-medium leading-normal">
+              <span className={`${styles.bulletCheck} shrink-0 mt-0.5 font-bold`}>✓</span>
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+  
+        <div className="z-10 mt-4 pt-2">
+          <a 
+            href={buttonHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`w-full ${styles.btnBg} text-xs font-black py-2.5 px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95 text-center`}
+          >
+            <span>{buttonText}</span>
+            <span>🚀</span>
+          </a>
+        </div>
+      </div>
+    );
+  };
+
   const renderSuperVipCard = () => {
     const titles = {
       ru: "Ваше объявление всегда на первом месте!",
       en: "Your listing always at the very top!",
       tr: "İlanınız her zaman en başta!"
     };
-    const descs = {
-      ru: "Максимальные просмотры и мгновенный контакт. Закреп на сайте и в топе официального канала.",
-      en: "Maximum exposure and instant customer response. Pinned on the site and in the official channel top.",
-      tr: "Maksimum görünürlük ve anında müşteri dönüşü. Sitede ve resmi kanalda en üstте sabitleme."
+    const bullets = {
+      ru: [
+        "Максимальные просмотры и мгновенный контакт",
+        "Закреп на сайте и в топе официального канала",
+        "Закрепленный пост в нашей Telegram-группе"
+      ],
+      en: [
+        "Maximum exposure and instant customer response",
+        "Pinned on the website homepage top",
+        "Pinned post in our official Telegram channel"
+      ],
+      tr: [
+        "Maksimum görünürlük ve anında müşteri dönüşü",
+        "Web sitesinde en üst sırada sabitleme",
+        "Resmi Telegram grubumuzda sabitlenmiş gönderi"
+      ]
     };
     const buttons = {
       ru: "Купить Закреп",
@@ -439,61 +553,45 @@ export default function HomeClient({
       tr: "SÜPER VİP SABİTLEME"
     };
     const tariff = {
-      ru: "неделя",
-      en: "week",
-      tr: "hafta"
+      ru: "/неделя",
+      en: "/week",
+      tr: "/hafta"
     };
-    
-    return (
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-900 shadow-xl border border-indigo-500/30 flex flex-col justify-between p-4 sm:p-5 group transition-all duration-300 hover:shadow-indigo-500/10 hover:-translate-y-1 h-full min-h-[340px] sm:min-h-[380px]">
-        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 opacity-60 pointer-events-none group-hover:opacity-80 transition-all duration-700" />
-        
-        <div className="flex flex-col gap-2.5 z-10 w-full">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="bg-gradient-to-r from-amber-400 to-yellow-500 text-blue-950 text-[9px] sm:text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse">
-              <span>👑</span>
-              <span>{badge[lang]}</span>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md px-2 py-1 rounded-lg border border-white/10 shrink-0">
-              <span className="text-white text-xs sm:text-sm font-black tracking-tight">180 ★ <span className="text-[9px] sm:text-[10px] font-normal text-slate-300">/{tariff[lang]}</span></span>
-            </div>
-          </div>
-        </div>
-  
-        <div className="z-10 mt-3">
-          <h3 className="text-sm sm:text-base font-black text-white leading-snug group-hover:text-amber-300 transition-colors line-clamp-2">
-            {titles[lang]}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-300 font-medium mt-1.5 leading-normal line-clamp-3 sm:line-clamp-4">
-            {descs[lang]}
-          </p>
-        </div>
-  
-        <div className="z-10 mt-3 pt-2">
-          <a 
-            href="https://t.me/BotHelpG_bot?start=super_vip"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-yellow-400 hover:to-amber-500 text-blue-950 text-xs font-black py-2.5 px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95 text-center"
-          >
-            <span>{buttons[lang]}</span>
-            <span>🚀</span>
-          </a>
-        </div>
-      </div>
-    );
+
+    return renderPromoCard({
+      badge: badge[lang],
+      badgeType: 'vip',
+      priceText: `180 ★${tariff[lang]}`,
+      icon: '👑',
+      title: titles[lang],
+      bullets: bullets[lang],
+      buttonText: buttons[lang],
+      buttonHref: "https://t.me/BotHelpG_bot?start=super_vip"
+    });
   };
-  
+
   const renderVoicePromoCard = () => {
     const titles = {
-      ru: "Мы первые в мире! 🌍",
-      en: "First in the world! 🌍",
-      tr: "Dünyada ilk! 🌍"
+      ru: "Подайте объявление голосом! 🎙️",
+      en: "Post listings with your voice! 🎙️",
+      tr: "Sesinizle ilan verin! 🎙️"
     };
-    const descs = {
-      ru: "Достаточно одного голосового сообщения! Надиктуйте боту объявление или вопрос, и ИИ всё сделает сам за секунду.",
-      en: "One voice message is enough! Dictate your ad or question, and AI will do everything in a second.",
-      tr: "Tek bir sesli mesaj yeterli! İlanınızı veya sorunuzu dikte edin, yapay zeka her şeyi saniyeler içinde yapsın."
+    const bullets = {
+      ru: [
+        "Достаточно одного голосового сообщения боту",
+        "ИИ сам выделит параметры, цену и контакты",
+        "Бесплатно и доступно в любое время суток"
+      ],
+      en: [
+        "Just send one voice message to the bot",
+        "AI extracts parameters, prices, and contacts",
+        "Free and available 24/7"
+      ],
+      tr: [
+        "Bota tek bir sesli mesaj göndermeniz yeterli",
+        "Yapay zeka özellikleri, fiyatı & kişiyi çeker",
+        "Ücretsiz ve 7/24 kullanılabilir"
+      ]
     };
     const buttons = {
       ru: "Отправить Голосовое",
@@ -505,57 +603,41 @@ export default function HomeClient({
       en: "AI ASSISTANT 24/7",
       tr: "YAPAY ZEKA ASİSTAN 24/7"
     };
-    
-    return (
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 shadow-xl border border-purple-500/30 flex flex-col justify-between p-4 sm:p-5 group transition-all duration-300 hover:shadow-purple-500/20 hover:-translate-y-1 h-full min-h-[340px] sm:min-h-[380px]">
-        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 opacity-60 pointer-events-none group-hover:opacity-80 transition-all duration-700" />
-        
-        <div className="flex flex-col gap-2.5 z-10 w-full">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="bg-gradient-to-r from-purple-400 to-pink-500 text-white text-[9px] sm:text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 animate-pulse">
-              <span>🎙️</span>
-              <span>{badge[lang]}</span>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md px-2 py-1 rounded-lg border border-white/10 shrink-0">
-              <span className="text-white text-xs sm:text-sm font-black tracking-tight">FREE</span>
-            </div>
-          </div>
-        </div>
-  
-        <div className="z-10 mt-3">
-          <h3 className="text-sm sm:text-base font-black text-white leading-snug group-hover:text-purple-300 transition-colors line-clamp-2">
-            {titles[lang]}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-300 font-medium mt-1.5 leading-normal line-clamp-3 sm:line-clamp-4">
-            {descs[lang]}
-          </p>
-        </div>
-  
-        <div className="z-10 mt-3 pt-2">
-          <a 
-            href="https://t.me/BotHelpG_bot?start=voice"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-indigo-400 hover:to-purple-500 text-white text-xs font-black py-2.5 px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95 text-center"
-          >
-            <span>{buttons[lang]}</span>
-            <span>🚀</span>
-          </a>
-        </div>
-      </div>
-    );
+
+    return renderPromoCard({
+      badge: badge[lang],
+      badgeType: 'free',
+      priceText: 'FREE',
+      icon: '🎙️',
+      title: titles[lang],
+      bullets: bullets[lang],
+      buttonText: buttons[lang],
+      buttonHref: "https://t.me/BotHelpG_bot?start=voice"
+    });
   };
-  
+
   const renderPriorityCard = () => {
     const titles = {
       ru: "Выделитесь среди сотен объявлений!",
       en: "Stand out from hundreds of listings!",
       tr: "Yüzlerce ilan arasından öne çıkın!"
     };
-    const descs = {
-      ru: "Разместитесь в начале ленты над обычными группами. В 5 раз больше откликов, просмотров и быстрых продаж.",
-      en: "Get placed at the start of the feed above regular groups. 5x more clicks, views, and faster sales.",
-      tr: "Normal grupların üzerinde, akışın en başında yer alın. 5 kat daha fazla tıklama ve hızlı satış."
+    const bullets = {
+      ru: [
+        "Размещение в начале ленты над обычными группами",
+        "В 5 раз больше откликов, просмотров и быстрых продаж",
+        "Свежее обновление даты публикации каждый день"
+      ],
+      en: [
+        "Placed at the start of the feed above regular groups",
+        "5x more responses, views, and faster sales",
+        "Automatic refresh of publication date daily"
+      ],
+      tr: [
+        "Normal grupların üzerinde akışın en başında yer alır",
+        "5 kat daha fazla dönüş, izlenme & hızlı satış",
+        "Yayın tarihinin her gün otomatik güncellenmesi"
+      ]
     };
     const buttons = {
       ru: "Подключить Приоритет",
@@ -565,52 +647,24 @@ export default function HomeClient({
     const badge = {
       ru: "ПРИОРИТЕТ В ЛЕНТЕ",
       en: "PRIORITY LISTING",
-      tr: "ÖNCELİKLİ İLAN"
+      tr: "ÖNCELİKLИ İLAN"
     };
     const tariff = {
-      ru: "неделя",
-      en: "week",
-      tr: "hafta"
+      ru: "/неделя",
+      en: "/week",
+      tr: "/hafta"
     };
-    
-    return (
-      <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-900 shadow-xl border border-purple-500/30 flex flex-col justify-between p-4 sm:p-5 group transition-all duration-300 hover:shadow-purple-500/10 hover:-translate-y-1 h-full min-h-[340px] sm:min-h-[380px]">
-        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 opacity-60 pointer-events-none group-hover:opacity-80 transition-all duration-700" />
-        
-        <div className="flex flex-col gap-2.5 z-10 w-full">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-[9px] sm:text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider shadow-lg flex items-center gap-1 shrink-0">
-              <span>⚡</span>
-              <span>{badge[lang]}</span>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md px-2 py-1 rounded-lg border border-white/10 shrink-0">
-              <span className="text-white text-xs sm:text-sm font-black tracking-tight">99 ★ <span className="text-[9px] sm:text-[10px] font-normal text-slate-300">/{tariff[lang]}</span></span>
-            </div>
-          </div>
-        </div>
-  
-        <div className="z-10 mt-3">
-          <h3 className="text-sm sm:text-base font-black text-white leading-snug group-hover:text-purple-300 transition-colors line-clamp-2">
-            {titles[lang]}
-          </h3>
-          <p className="text-[10px] sm:text-xs text-slate-300 font-medium mt-1.5 leading-normal line-clamp-3 sm:line-clamp-4">
-            {descs[lang]}
-          </p>
-        </div>
-  
-        <div className="z-10 mt-3 pt-2">
-          <a 
-            href="https://t.me/BotHelpG_bot?start=priority"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-indigo-500 hover:to-purple-600 text-white text-xs font-black py-2.5 px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 active:scale-95 text-center"
-          >
-            <span>{buttons[lang]}</span>
-            <span>🔥</span>
-          </a>
-        </div>
-      </div>
-    );
+
+    return renderPromoCard({
+      badge: badge[lang],
+      badgeType: 'priority',
+      priceText: `99 ★${tariff[lang]}`,
+      icon: '⚡',
+      title: titles[lang],
+      bullets: bullets[lang],
+      buttonText: buttons[lang],
+      buttonHref: "https://t.me/BotHelpG_bot?start=priority"
+    });
   };
 
   const toggleFavorite = (id: string, e: React.MouseEvent) => {
@@ -1067,37 +1121,76 @@ export default function HomeClient({
 
       {/* SaaS Alert Subscription Premium Banner (VIP RADAR) */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
-        <Link 
-          href="https://t.me/BotHelpG_bot?start=alerts"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group block w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white p-5 rounded-2xl shadow-lg transition-all duration-300 hover:-translate-y-1"
-        >
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4 text-left">
-              <div className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center text-3xl animate-pulse group-hover:animate-none">
-                🔔
-              </div>
-              <div>
-                <h3 className="text-lg font-black flex items-center gap-2">
-                  {lang === 'ru' ? 'Перехватывайте лучшие товары первыми' : lang === 'tr' ? 'Telegram Anında Bildirimler' : 'Instant Telegram Notifications'}
-                  <span className="bg-yellow-400 text-blue-950 text-[10px] px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wider animate-bounce group-hover:animate-none shadow-sm">VIP</span>
-                </h3>
-                <p className="text-sm text-blue-100 font-medium mt-0.5">
-                  {lang === 'ru' ? 'Устали видеть надпись «Уже продано»? Пока остальные часами листают ленту в надежде на удачу, вы получаете уведомление в ту же секунду, как нужная вещь появилась в продаже. Настройте фильтр под себя (только ваши размеры, цены и бренды) и забирайте эксклюзив до того, как его увидят другие.' 
-                   : lang === 'tr' ? 'İlanları gerçek zamanlı takip edin! Gelişmiş filtreler aktivasyondan sonra kullanılabilir.' 
-                   : 'Track listings in real-time! Custom smart filters are unlocked after activation.'}
-                </p>
-              </div>
+        <div className="relative bg-gradient-to-r from-blue-900 via-indigo-950 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-blue-500/30 overflow-hidden group flex flex-col lg:flex-row items-center justify-between gap-6 hover:shadow-blue-500/10 hover:-translate-y-1 transition-all duration-300">
+          <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/10 opacity-60 pointer-events-none group-hover:opacity-80 transition-all duration-700" />
+          
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-5 z-10 text-left flex-1">
+            <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-4xl shadow-inner shadow-white/20 select-none shrink-0 group-hover:rotate-6 transition-transform">
+              🔔
             </div>
-            <div className="shrink-0 bg-white text-blue-700 px-6 py-3 rounded-xl font-black text-sm group-hover:bg-blue-50 transition-all shadow-md flex items-center gap-2">
-              {lang === 'ru' ? 'включить за 99 звёзд в месяц!!!' : lang === 'tr' ? 'Ayda 99 Yıldız İле Başlat' : 'Enable for 99 Stars / Month'}
-              <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-              </svg>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <h3 className="text-xl font-black tracking-tight leading-tight">
+                  {lang === 'ru' ? 'Перехватывайте лучшие товары первыми' : lang === 'tr' ? 'Telegram Anında Bildirimler' : 'Instant Telegram Notifications'}
+                </h3>
+                <span className="bg-gradient-to-r from-amber-400 to-yellow-500 text-blue-950 text-[10px] px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider animate-bounce shadow-md">
+                  VIP RADAR
+                </span>
+              </div>
+              <p className="text-sm text-slate-300 font-medium leading-relaxed max-w-3xl">
+                {lang === 'ru' ? 'Устали видеть надпись «Уже продано»? Пока остальные часами листают ленту в надежде на удачу, вы получаете уведомление в ту же секунду, как нужный лот появился на рынке.' 
+                  : lang === 'tr' ? 'İlanları gerçek zamanlı takip edin! Gelişmiş filtreler aktivasyondan sonra kullanılabilir.' 
+                  : 'Track listings in real-time! Custom smart filters are unlocked after activation.'}
+              </p>
+              
+              <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5 pt-2">
+                <li className="flex items-center gap-2 text-xs text-slate-200">
+                  <span className="text-amber-400 font-bold">✓</span>
+                  <span>{lang === 'ru' ? 'Мгновенные уведомления о новых объявлениях' : 'Instant alerts for new listings'}</span>
+                </li>
+                <li className="flex items-center gap-2 text-xs text-slate-200">
+                  <span className="text-amber-400 font-bold">✓</span>
+                  <span>{lang === 'ru' ? 'Гибкие фильтры (ваши районы, цены, бренды)' : 'Flexible filters (locations, prices, brands)'}</span>
+                </li>
+              </ul>
             </div>
           </div>
-        </Link>
+          
+          <div className="flex flex-col sm:flex-row items-center gap-4 z-10 shrink-0 w-full lg:w-auto">
+            <div className="flex flex-col items-center sm:items-end text-center sm:text-right">
+              <div className="bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-1.5 shadow-sm">
+                <span className="text-white text-sm font-black tracking-tight">
+                  {lang === 'ru' ? '99 ★ / месяц' : '99 Stars / month'}
+                </span>
+                <button 
+                  onClick={() => setIsStarsModalOpen(true)}
+                  className="text-[10px] text-slate-300 hover:text-white bg-white/10 hover:bg-white/20 w-4 h-4 rounded-full flex items-center justify-center font-bold"
+                  title={lang === 'ru' ? 'Что такое звёзды?' : 'What are Stars?'}
+                >
+                  ?
+                </button>
+              </div>
+              <button 
+                onClick={() => setIsStarsModalOpen(true)}
+                className="text-[11px] text-indigo-300 hover:underline font-semibold mt-1"
+              >
+                {lang === 'ru' ? 'Что такое ⭐?' : 'What is ⭐?'}
+              </button>
+            </div>
+
+            <a 
+              href="https://t.me/BotHelpG_bot?start=alerts"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full sm:w-auto bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-yellow-400 hover:to-amber-500 text-blue-950 px-8 py-4 rounded-2xl font-black text-sm shadow-md transition-all active:scale-95 text-center flex items-center justify-center gap-2"
+            >
+              <span>{lang === 'ru' ? 'Включить подписку' : 'Enable alerts'}</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
+              </svg>
+            </a>
+          </div>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -1960,8 +2053,10 @@ export default function HomeClient({
                           <div className={`relative aspect-[4/3] rounded-2xl overflow-hidden mb-3 glass-card transition-all duration-300 ${
                             item.is_vip
                               ? 'ring-2 ring-amber-400/70 shadow-[0_0_25px_rgba(251,191,36,0.5)]'
-                              : item.is_priority || String(item.source || '').toLowerCase().includes('northcyprus_island')
-                              ? 'ring-2 ring-indigo-500/50 shadow-[0_0_20px_rgba(99,102,241,0.4)]'
+                              : item.is_priority
+                              ? 'ring-2 ring-amber-500/50 shadow-[0_0_20px_rgba(245,158,11,0.4)]'
+                              : String(item.source || '').toLowerCase().includes('northcyprus_island')
+                              ? 'ring-2 ring-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.4)]'
                               : ''
                           }`}>
                             {(item.image_url && item.image_url !== 'None' && item.image_url !== 'null' && item.image_url !== 'undefined' && item.image_url !== '[]') ? (
@@ -2008,7 +2103,7 @@ export default function HomeClient({
                                  .trim();
                                
                                return (
-                                 <div className={`absolute bottom-3 left-3 bg-gradient-to-r from-blue-600 to-indigo-700 shadow-blue-500/40 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1.5 cursor-pointer transition-all hover:scale-110 hover:brightness-110 z-20`}
+                                 <div className={`absolute bottom-3 left-3 bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-500/20 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1.5 cursor-pointer transition-all hover:scale-110 hover:brightness-110 z-20`}
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
@@ -2023,7 +2118,7 @@ export default function HomeClient({
                                );
                              })() : (String(item.source || '').toLowerCase().includes('личные сообщения боту')) ? (() => {
                                return (
-                                 <div className={`absolute bottom-3 left-3 bg-gradient-to-r from-emerald-50 to-teal-600 shadow-emerald-500/40 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1.5 z-20`}>
+                                 <div className={`absolute bottom-3 left-3 bg-gradient-to-r from-emerald-600 to-teal-600 shadow-emerald-500/20 backdrop-blur-md text-white text-[9px] sm:text-[10px] px-2 sm:px-2.5 py-1 rounded-lg font-extrabold uppercase tracking-wider shadow-lg border border-white/20 flex items-center gap-1.5 z-20`}>
                                    <span>✅</span>
                                    <span>{lang === 'ru' ? 'ОТ ПОЛЬЗОВАТЕЛЯ' : 'VERIFIED'}</span>
                                  </div>
@@ -2548,6 +2643,90 @@ export default function HomeClient({
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Telegram Stars Explanation Modal */}
+      {isStarsModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[101] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 md:p-8 max-w-md w-full shadow-2xl relative border border-gray-100 dark:border-white/10 text-gray-900 dark:text-white my-auto">
+            <button 
+              onClick={() => setIsStarsModalOpen(false)}
+              className="absolute top-5 right-5 text-gray-400 hover:text-gray-600 dark:hover:text-white text-xl font-bold transition-colors z-10"
+              aria-label="Close modal"
+            >
+              ✕
+            </button>
+
+            <div className="text-center mb-6">
+              <span className="text-5xl inline-block mb-3 animate-bounce">⭐</span>
+              <h2 className="text-2xl font-black tracking-tight leading-tight">
+                {lang === 'ru' ? 'Что такое Telegram Stars?' : 'What are Telegram Stars?'}
+              </h2>
+              <p className="text-xs text-indigo-500 dark:text-indigo-400 font-bold mt-1 uppercase tracking-wider">
+                {lang === 'ru' ? 'Внутренняя валюта Telegram' : 'Official Telegram Currency'}
+              </p>
+            </div>
+
+            <div className="space-y-4 mb-6 text-left">
+              <p className="text-sm text-gray-600 dark:text-slate-300 leading-relaxed font-medium">
+                {lang === 'ru' 
+                  ? 'Telegram Stars (Звёзды) — это официальный способ оплаты цифровых услуг внутри экосистемы Telegram.'
+                  : 'Telegram Stars is the official currency for purchasing digital services within the Telegram app.'}
+              </p>
+
+              <div className="bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 rounded-2xl p-4 space-y-3.5">
+                <div className="flex gap-3">
+                  <span className="text-xl">💳</span>
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-gray-700 dark:text-slate-200">
+                      {lang === 'ru' ? 'Как приобрести?' : 'How to buy?'}
+                    </h4>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      {lang === 'ru'
+                        ? 'Вы можете купить звёзды прямо во время оплаты картой или через Apple Pay / Google Play.'
+                        : 'You can buy stars instantly using credit card, Apple Pay, or Google Play.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <span className="text-xl">💡</span>
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-gray-700 dark:text-slate-200">
+                      {lang === 'ru' ? 'Где купить на 30-40% дешевле?' : 'Get it 30-40% cheaper'}
+                    </h4>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      {lang === 'ru'
+                        ? 'Покупайте звёзды через официального бота @PremiumBot в Telegram. Там нет комиссий App Store/Google Play.'
+                        : 'Purchase stars via the official @PremiumBot inside Telegram to avoid App Store/Google Play fees.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <span className="text-xl">🚀</span>
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-gray-700 dark:text-slate-200">
+                      {lang === 'ru' ? 'Как это работает на сайте?' : 'How it works on site'}
+                    </h4>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      {lang === 'ru'
+                        ? 'Нажмите на любую платную услугу на сайте, вас перенаправит в Telegram-бота, который мгновенно выставит счет.'
+                        : 'Click any paid feature on the site to open the Telegram bot, which instantly sends you an invoice.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsStarsModalOpen(false)}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3.5 rounded-xl font-bold hover:opacity-90 transition-all text-sm shadow-md"
+            >
+              {lang === 'ru' ? 'Понятно, спасибо!' : 'Got it, thanks!'}
+            </button>
           </div>
         </div>
       )}
