@@ -443,7 +443,12 @@ export async function GET(request: Request) {
       category: item.category,
       location: item.location,
       createdAt: item.createdAt,
-      image_url: item.image_url,
+      // Strip heavy inline base64 images from list payloads so large fetches
+      // (e.g. admin Command Center) don't blow up the response size and 503.
+      // The full image is still available via the single-listing GET (?id=...).
+      image_url: (typeof item.image_url === 'string' && item.image_url.startsWith('data:'))
+        ? '/promo_banner.webp'
+        : item.image_url,
       country: item.country,
       verified_badge: item.verified_badge,
       description: item.description ? (item.description.length > 150 ? item.description.substring(0, 150) + '...' : item.description) : '',

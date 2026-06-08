@@ -59,7 +59,7 @@ function AdminContent() {
   const fetchListings = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/listings?limit=10000');
+      const res = await fetch('/api/listings?limit=2000');
       const data = await res.json();
       setListings(data.listings || data || []);
     } catch (err) {
