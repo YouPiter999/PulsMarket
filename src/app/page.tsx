@@ -82,12 +82,11 @@ export default async function Home() {
     });
     const nextCursor = filteredGeneralDocs.length >= 250 ? filteredGeneralDocs[filteredGeneralDocs.length - 1].id : null;
 
-    // Fetch initial stats for 'Северный Кипр' (SSR/ISR)
-    const statsSnapshot = await db.collection('listings')
-      .where('country', '==', 'Северный Кипр')
-      .select('category', 'createdAt')
-      .get();
-
+    // Fetch initial stats for 'Северный Кипр' (SSR).
+    // IMPORTANT: This MUST be bounded. The original query had no .limit() and read
+    // the ENTIRE collection (2000+ docs) on every homepage SSR render, which on a
+    // cold Cloud Function exceeded the execution timeout and returned HTTP 500 for
+    // the whole homepage. We cap it and isolate failures so stats never crash the page.
     const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
     const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
     const nineDaysAgo = new Date(Date.now() - 777600000).toISOString();
@@ -95,24 +94,36 @@ export default async function Home() {
     let countHour = 0;
     let countDay = 0;
     let countNineDays = 0;
+    let statsTotal = 0;
     const categoryCounts: Record<string, number> = {};
 
-    statsSnapshot.forEach((doc: any) => {
-      const data = doc.data();
-      const cat = resolveCategory(data.category);
-      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    try {
+      const statsSnapshot = await db.collection('listings')
+        .where('country', '==', 'Северный Кипр')
+        .select('category', 'createdAt')
+        .limit(2500)
+        .get();
 
-      if (data.createdAt) {
-        if (data.createdAt >= oneHourAgo) countHour++;
-        if (data.createdAt >= oneDayAgo) countDay++;
-        if (data.createdAt >= nineDaysAgo) countNineDays++;
-      }
-    });
+      statsSnapshot.forEach((doc: any) => {
+        const data = doc.data();
+        const cat = resolveCategory(data.category);
+        categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
 
-    categoryCounts['Все'] = statsSnapshot.size;
+        if (data.createdAt) {
+          if (data.createdAt >= oneHourAgo) countHour++;
+          if (data.createdAt >= oneDayAgo) countDay++;
+          if (data.createdAt >= nineDaysAgo) countNineDays++;
+        }
+      });
+
+      statsTotal = statsSnapshot.size;
+      categoryCounts['Все'] = statsSnapshot.size;
+    } catch (statsErr) {
+      console.warn('SSR stats query failed (non-fatal), rendering page without precomputed stats:', statsErr);
+    }
 
     const initialStats = {
-      total: statsSnapshot.size,
+      total: statsTotal,
       countHour,
       countDay,
       countNineDays,
