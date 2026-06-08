@@ -200,12 +200,16 @@ function AdminContent() {
       // everything in one request.
       let totals = { scanned: 0, deleted_duplicates: 0, deleted_old: 0, b64_succeeded: 0 };
       let passes = 0;
-      const MAX_PASSES = 12;
+      // Batches are kept small (150) because a handful of legacy base64 listings are
+      // scattered through the collection and each one triggers several slow upload
+      // attempts; larger batches push a single pass past the Cloud Function timeout
+      // (we observed 503 at 400/pass). MAX_PASSES covers ~3000 docs at 150/pass.
+      const MAX_PASSES = 25;
       let hasMore = true;
       let cursor: string | null = null;
       while (hasMore && passes < MAX_PASSES) {
         passes++;
-        let url = '/api/admin/clean?limit=400';
+        let url = '/api/admin/clean?limit=150';
         if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
         const res = await fetch(url);
         if (!res.ok) {

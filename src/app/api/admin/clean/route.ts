@@ -28,7 +28,12 @@ export async function GET(request: Request) {
     // "УДАЛИТЬ ДУБЛИ И ОЧИСТИТЬ" button. We now process a bounded batch per call
     // and stop early when the time budget is spent, returning has_more so the
     // admin client can keep calling until done.
-    const TIME_BUDGET_MS = 45000;
+    const TIME_BUDGET_MS = 25000;
+    // Legacy base64 listings can't be re-hosted from the Cloud Function (ImgBB is
+    // rate-limited and Catbox/Imagebin reject the GCP egress IP as "Invalid
+    // uploader"). Each failed attempt burns several seconds on hanging network
+    // calls, so we cap how many base64 conversions we even attempt per pass.
+    const MAX_B64_PER_PASS = 6;
     try {
         const db = getFirestoreDb();
         const { searchParams } = new URL(request.url);
@@ -62,6 +67,9 @@ export async function GET(request: Request) {
         
         const now = new Date();
         const seenExternalIds = new Set<string>();
+        // Cursor of the last doc we actually finished, so a mid-batch timeout resumes
+        // right after it instead of re-scanning the whole batch (which could loop).
+        let lastProcessedCursor: string | null = cursorCreatedAt || null;
         for (const doc of snapshot.docs) {
             // Stop gracefully before the function times out so the client always
             // gets a 200 with progress instead of a 503. Remaining docs are handled
@@ -73,6 +81,7 @@ export async function GET(request: Request) {
             }
             const data = doc.data();
             const listingId = doc.id;
+            lastProcessedCursor = data.createdAt || lastProcessedCursor;
             
             // 0. CLEAN SPAM & DROP EMPTY LISTINGS
             const title = data.title || "";
@@ -85,8 +94,8 @@ export async function GET(request: Request) {
             if (imageUrl && imageUrl.startsWith('data:image')) {
                 b64Attempted++;
                 
-                // Limit processing to 15 base64 conversions per run to avoid serverless timeouts
-                if (b64Succeeded + b64Errors.length < 15) {
+                // Limit base64 conversions per run to avoid serverless timeouts
+                if (b64Succeeded + b64Errors.length < MAX_B64_PER_PASS) {
                     try {
                         console.log(`🖼️ Converting Base64 image for listing ${listingId}...`);
                         const matches = imageUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-+.]+);base64,([\s\S]*)$/);
@@ -476,9 +485,11 @@ export async function GET(request: Request) {
             b64_succeeded: b64Succeeded,
             b64_errors: b64Errors.slice(0, 100),
             timed_out: timedOut,
-            has_more,
-            // If we timed out, resume from the same cursor; otherwise advance.
-            next_cursor: timedOut ? (cursorCreatedAt || null) : nextCursor,
+            // If we timed out we still made progress, so the client must keep going.
+            has_more: timedOut ? true : has_more,
+            // Resume right after the last doc we finished (advances even on timeout
+            // so we never re-scan the same docs forever).
+            next_cursor: timedOut ? lastProcessedCursor : nextCursor,
             elapsed_ms: Date.now() - startTime,
             message: has_more ? "Partial pass complete — продолжаю..." : "Sanitization Success!"
         });
