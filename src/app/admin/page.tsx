@@ -194,12 +194,40 @@ function AdminContent() {
     if (!confirm('Запустить генеральную уборку? \n\nЭто автоматически: \n1. Удалит все дубликаты объявлений \n2. Очистит старые объявления (>9 дней) \n3. Перепроверит категории всех объявлений.')) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/clean');
-      const data = await res.json();
-      alert(`Уборка завершена!\n\nПросканировано: ${data.scanned}\nУдалено дублей: ${data.deleted_duplicates}\nУдалено старых: ${data.deleted_old}\n\nСписок обновлен.`);
+      // The server processes a bounded batch per call and returns has_more when
+      // there is more to do, so we loop until the whole collection is processed.
+      // This avoids the function timeout (503) that happened when it tried to do
+      // everything in one request.
+      let totals = { scanned: 0, deleted_duplicates: 0, deleted_old: 0, b64_succeeded: 0 };
+      let passes = 0;
+      const MAX_PASSES = 12;
+      let hasMore = true;
+      let cursor: string | null = null;
+      while (hasMore && passes < MAX_PASSES) {
+        passes++;
+        let url = '/api/admin/clean?limit=400';
+        if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Server returned ${res.status}`);
+        }
+        const data = await res.json();
+        if (!data.success) {
+          throw new Error(data.error || 'Unknown error');
+        }
+        totals.scanned += data.scanned || 0;
+        totals.deleted_duplicates += data.deleted_duplicates || 0;
+        totals.deleted_old += data.deleted_old || 0;
+        totals.b64_succeeded += data.b64_succeeded || 0;
+        hasMore = Boolean(data.has_more);
+        cursor = data.next_cursor || null;
+        // Safety: if server says there's more but gives no cursor, stop to avoid an infinite re-scan.
+        if (hasMore && !cursor) break;
+      }
+      alert(`Уборка завершена!\n\nПроходов: ${passes}\nПросканировано: ${totals.scanned}\nУдалено дублей: ${totals.deleted_duplicates}\nУдалено старых: ${totals.deleted_old}\nКартинок переконвертировано: ${totals.b64_succeeded}\n\nСписок обновлен.`);
       fetchListings();
-    } catch (err) {
-      alert('Ошибка при уборке');
+    } catch (err: any) {
+      alert('Ошибка при уборке: ' + (err?.message || err));
       setLoading(false);
     }
   };

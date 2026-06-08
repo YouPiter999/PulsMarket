@@ -19,11 +19,33 @@ function cleanText(text: string): string {
     return cleaned.trim();
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+    const startTime = Date.now();
+    // Hard time budget well under the Cloud Function timeout. The original code
+    // read the ENTIRE collection (2000+ docs) and ran dedup + base64 uploads +
+    // multiple Firestore writes per doc synchronously, which always exceeded the
+    // function timeout and returned HTTP 503 ("Service Unavailable") on the
+    // "УДАЛИТЬ ДУБЛИ И ОЧИСТИТЬ" button. We now process a bounded batch per call
+    // and stop early when the time budget is spent, returning has_more so the
+    // admin client can keep calling until done.
+    const TIME_BUDGET_MS = 45000;
     try {
         const db = getFirestoreDb();
-        console.log("🧹 STARTING SYSTEM HYGIENE: Full Category Re-Indexing...");
-        const snapshot = await db.collection('listings').orderBy('createdAt', 'desc').get();
+        const { searchParams } = new URL(request.url);
+        const batchLimit = Math.min(parseInt(searchParams.get('limit') || '400', 10) || 400, 600);
+        // Cursor pagination so repeated calls walk the WHOLE collection instead of
+        // re-scanning the same most-recent docs each time. Cursor is the createdAt
+        // ISO string of the last doc processed in the previous batch.
+        const cursorCreatedAt = searchParams.get('cursor') || '';
+        console.log(`🧹 STARTING SYSTEM HYGIENE (batch up to ${batchLimit}, cursor=${cursorCreatedAt || 'start'})...`);
+        let query = db.collection('listings').orderBy('createdAt', 'desc').limit(batchLimit);
+        if (cursorCreatedAt) {
+            query = query.startAfter(cursorCreatedAt);
+        }
+        const snapshot = await query.get();
+        const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+        const nextCursor = lastDoc ? (lastDoc.data().createdAt || null) : null;
+        let timedOut = false;
         
         let scanned = 0;
         let deletedOld = 0;
@@ -39,7 +61,16 @@ export async function GET() {
         let imgbb2Available = true;
         
         const now = new Date();
-        const seenExternalIds = new Set<string>();        for (const doc of snapshot.docs) {
+        const seenExternalIds = new Set<string>();
+        for (const doc of snapshot.docs) {
+            // Stop gracefully before the function times out so the client always
+            // gets a 200 with progress instead of a 503. Remaining docs are handled
+            // on the next call.
+            if (Date.now() - startTime > TIME_BUDGET_MS) {
+                timedOut = true;
+                console.warn(`⏱️ Time budget reached after scanning ${scanned} docs; returning partial progress.`);
+                break;
+            }
             const data = doc.data();
             const listingId = doc.id;
             
@@ -429,6 +460,11 @@ export async function GET() {
             }
         }
 
+        // There may be more docs to process if we filled the whole batch. (If we
+        // timed out mid-batch we did NOT advance to the end, so the next call should
+        // resume from the SAME cursor, not nextCursor, to avoid skipping docs.)
+        const filledBatch = snapshot.docs.length >= batchLimit;
+        const has_more = filledBatch;
         return NextResponse.json({
             success: true,
             scanned,
@@ -439,7 +475,12 @@ export async function GET() {
             b64_attempted: b64Attempted,
             b64_succeeded: b64Succeeded,
             b64_errors: b64Errors.slice(0, 100),
-            message: "Sanitization Success!"
+            timed_out: timedOut,
+            has_more,
+            // If we timed out, resume from the same cursor; otherwise advance.
+            next_cursor: timedOut ? (cursorCreatedAt || null) : nextCursor,
+            elapsed_ms: Date.now() - startTime,
+            message: has_more ? "Partial pass complete — продолжаю..." : "Sanitization Success!"
         });
     } catch (error: any) {
         console.error("Hygiene Error:", error);
