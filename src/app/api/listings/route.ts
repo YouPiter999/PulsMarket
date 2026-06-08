@@ -6,6 +6,33 @@ import { getCategoryNuclear } from '@/lib/categoryClassifier';
 
 export const dynamic = 'force-dynamic';
 
+// Convert an inline base64 data: image into a permanent hosted URL on ingest,
+// so we never store huge base64 blobs in Firestore (which bloat the DB and
+// cause large list fetches like the admin Command Center to 503).
+async function convertBase64ToUrl(imageUrl: string): Promise<string | null> {
+  try {
+    const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!match) return null;
+    const base64Data = match[2];
+    const imgbbForm = new FormData();
+    imgbbForm.append('key', 'e53d3573d4e462b9048467002db84912');
+    imgbbForm.append('image', base64Data);
+    const response = await fetch('https://api.imgbb.com/1/upload', {
+      method: 'POST',
+      body: imgbbForm
+    });
+    const resData = await response.json();
+    if (response.status === 200 && resData?.data?.url) {
+      return resData.data.url as string;
+    }
+    console.warn('Ingest base64->URL conversion failed:', resData?.error?.message || JSON.stringify(resData));
+    return null;
+  } catch (err: any) {
+    console.error('Ingest base64->URL conversion error:', err?.message || err);
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const db = getFirestoreDb();
@@ -202,6 +229,15 @@ export async function POST(request: Request) {
       
       const isSouth = southCities.some(city => textLower.includes(city));
       data.country = isSouth ? 'Республика Кипр' : 'Северный Кипр';
+    }
+
+    // Convert any inline base64 image to a hosted URL BEFORE saving, so the
+    // database never stores heavy base64 blobs. Falls back gracefully: if the
+    // upload fails, drop the oversized base64 and use the promo placeholder
+    // rather than persisting a multi-megabyte string into Firestore.
+    if (typeof data.image_url === 'string' && data.image_url.startsWith('data:image/')) {
+      const hostedUrl = await convertBase64ToUrl(data.image_url);
+      data.image_url = hostedUrl || '/promo_banner.webp';
     }
 
     // Add timestamp and ID
