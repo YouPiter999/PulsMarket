@@ -319,7 +319,11 @@ export async function GET(request: Request) {
     }
     const cursorId = searchParams.get('cursor');
     const limitStr = searchParams.get('limit') || '50';
-    const limit = parseInt(limitStr, 10) || 50;
+    // Hard cap the limit. Reading thousands of full documents (some of which may
+    // still contain heavy inline base64 image_url blobs from legacy data) blows
+    // past the Cloud Function memory/timeout and returns 500/503 on every route.
+    // 1000 docs of lightweight data is safe; larger requests are clamped.
+    const limit = Math.min(parseInt(limitStr, 10) || 50, 1000);
     const q = searchParams.get('q')?.toLowerCase() || '';
     const country = searchParams.get('country') || '';
 
