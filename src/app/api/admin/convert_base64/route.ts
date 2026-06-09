@@ -112,12 +112,89 @@ export async function GET() {
       }
     }
 
+    // ---- SECOND PASS: re-host listings whose photo was stashed in
+    // pending_image_b64 on ingest because every image host was down at the time.
+    // Once a host is reachable again this promotes the stashed photo back into
+    // image_url and clears the stash. Keeps the same time budget.
+    let pendingProcessed = 0;
+    let pendingFailed = 0;
+    let pendingRemaining = 0;
+    if ((Date.now() - startTime) < 25000) {
+      const pendingSnap = await db.collection('listings')
+        .where('pending_image_b64', '>=', 'data:image/')
+        .where('pending_image_b64', '<=', 'data:image/\uf8ff')
+        .limit(batchLimit + 10)
+        .get();
+      for (const doc of pendingSnap.docs) {
+        if ((Date.now() - startTime) > 25000 || pendingProcessed >= batchLimit) {
+          pendingRemaining++;
+          continue;
+        }
+        const data = doc.data();
+        const pending = data.pending_image_b64 || '';
+        const match = pending.match(/^data:(image\/[a-zA-Z0-9.-]+);base64,(.+)$/);
+        if (!match) continue;
+        const mimeType = match[1];
+        const base64Data = match[2];
+        let publicUrl: string | null = null;
+        try {
+          // ImgBB (both keys)
+          for (const key of ['e53d3573d4e462b9048467002db84912', 'ff26a742456c252d8becf571b3faa7da']) {
+            if (publicUrl) break;
+            try {
+              const f = new FormData();
+              f.append('key', key);
+              f.append('image', base64Data);
+              const c = new AbortController();
+              const t = setTimeout(() => c.abort(), 10000);
+              const r = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: f, signal: c.signal });
+              clearTimeout(t);
+              const rd = await r.json();
+              if (r.status === 200 && rd?.data?.url) publicUrl = rd.data.url as string;
+            } catch (_) { /* try next */ }
+          }
+          // Catbox fallback
+          if (!publicUrl) {
+            const buffer = Buffer.from(base64Data, 'base64');
+            const ext = (mimeType.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+            const blob = new Blob([buffer], { type: mimeType });
+            const cf = new FormData();
+            cf.append('reqtype', 'fileupload');
+            cf.append('fileToUpload', blob, `image.${ext}`);
+            const cc = new AbortController();
+            const ct = setTimeout(() => cc.abort(), 20000);
+            const cr = await fetch('https://catbox.moe/user/api.php', { method: 'POST', body: cf, signal: cc.signal });
+            clearTimeout(ct);
+            const txt = (await cr.text()).trim();
+            if (cr.status === 200 && txt.startsWith('https://')) publicUrl = txt;
+          }
+          if (publicUrl) {
+            await doc.ref.update({
+              image_url: publicUrl,
+              pending_image_b64: (await import('firebase-admin/firestore')).FieldValue.delete(),
+              updatedAt: new Date().toISOString()
+            });
+            pendingProcessed++;
+          } else {
+            pendingFailed++;
+            failuresList.push({ id: doc.id, title: data.title, error: 'All hosts failed (pending re-host)' });
+          }
+        } catch (err: any) {
+          pendingFailed++;
+          failuresList.push({ id: doc.id, title: data.title, error: 'pending: ' + (err?.message || err) });
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       processed,
       skipped,
       failed,
       remaining_base64: remainingBase64,
+      pending_processed: pendingProcessed,
+      pending_failed: pendingFailed,
+      pending_remaining: pendingRemaining,
       failures: failuresList
     });
 

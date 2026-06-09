@@ -7,30 +7,67 @@ import { getCategoryNuclear } from '@/lib/categoryClassifier';
 export const dynamic = 'force-dynamic';
 
 // Convert an inline base64 data: image into a permanent hosted URL on ingest,
-// so we never store huge base64 blobs in Firestore (which bloat the DB and
-// cause large list fetches like the admin Command Center to 503).
-async function convertBase64ToUrl(imageUrl: string): Promise<string | null> {
+// so we never store huge base64 blobs in the image_url field (which bloat the DB
+// and cause large list fetches like the admin Command Center to 503).
+//
+// Per .cursorrules §3 we use a fault-tolerant cascade: ImgBB (key #1, 10s) ->
+// ImgBB (key #2, 10s) -> Catbox.moe (20s). Each host is bounded by a timeout so
+// a hanging upload can never block ingest. Returns the hosted URL, or null if
+// every host failed (caller decides how to preserve the original).
+async function fetchWithTimeout(url: string, opts: any, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-    if (!match) return null;
-    const base64Data = match[2];
-    const imgbbForm = new FormData();
-    imgbbForm.append('key', 'e53d3573d4e462b9048467002db84912');
-    imgbbForm.append('image', base64Data);
-    const response = await fetch('https://api.imgbb.com/1/upload', {
-      method: 'POST',
-      body: imgbbForm
-    });
-    const resData = await response.json();
-    if (response.status === 200 && resData?.data?.url) {
-      return resData.data.url as string;
-    }
-    console.warn('Ingest base64->URL conversion failed:', resData?.error?.message || JSON.stringify(resData));
-    return null;
-  } catch (err: any) {
-    console.error('Ingest base64->URL conversion error:', err?.message || err);
-    return null;
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
   }
+}
+
+async function convertBase64ToUrl(imageUrl: string): Promise<string | null> {
+  const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) return null;
+  const mime = match[1];
+  const base64Data = match[2];
+
+  const imgbbKeys = ['e53d3573d4e462b9048467002db84912', 'ff26a742456c252d8becf571b3faa7da'];
+  for (const key of imgbbKeys) {
+    try {
+      const imgbbForm = new FormData();
+      imgbbForm.append('key', key);
+      imgbbForm.append('image', base64Data);
+      const response = await fetchWithTimeout('https://api.imgbb.com/1/upload', { method: 'POST', body: imgbbForm }, 10000);
+      const resData = await response.json();
+      if (response.status === 200 && resData?.data?.url) {
+        return resData.data.url as string;
+      }
+      console.warn(`Ingest ImgBB (key …${key.slice(-4)}) failed:`, resData?.error?.message || JSON.stringify(resData));
+    } catch (err: any) {
+      console.warn(`Ingest ImgBB (key …${key.slice(-4)}) error:`, err?.name === 'AbortError' ? 'timeout' : (err?.message || err));
+    }
+  }
+
+  // Fallback: Catbox.moe (accepts a raw file upload). Note: Catbox rejects some
+  // server egress IPs as "Invalid uploader" — when that happens this also fails
+  // and we return null so the caller can preserve the original base64 instead.
+  try {
+    const ext = (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const buffer = Buffer.from(base64Data, 'base64');
+    const blob = new Blob([buffer], { type: mime });
+    const catForm = new FormData();
+    catForm.append('reqtype', 'fileupload');
+    catForm.append('fileToUpload', blob, `upload.${ext}`);
+    const catRes = await fetchWithTimeout('https://catbox.moe/user/api.php', { method: 'POST', body: catForm }, 20000);
+    const text = (await catRes.text()).trim();
+    if (catRes.status === 200 && text.startsWith('https://')) {
+      return text;
+    }
+    console.warn('Ingest Catbox fallback failed:', text.slice(0, 120));
+  } catch (err: any) {
+    console.warn('Ingest Catbox fallback error:', err?.name === 'AbortError' ? 'timeout' : (err?.message || err));
+  }
+
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -236,8 +273,28 @@ export async function POST(request: Request) {
     // upload fails, drop the oversized base64 and use the promo placeholder
     // rather than persisting a multi-megabyte string into Firestore.
     if (typeof data.image_url === 'string' && data.image_url.startsWith('data:image/')) {
-      const hostedUrl = await convertBase64ToUrl(data.image_url);
-      data.image_url = hostedUrl || '/promo_banner.webp';
+      const originalBase64 = data.image_url;
+      const hostedUrl = await convertBase64ToUrl(originalBase64);
+      if (hostedUrl) {
+        data.image_url = hostedUrl;
+        // Hosting succeeded — make sure no stale pending blob lingers.
+        if (data.pending_image_b64) delete data.pending_image_b64;
+      } else {
+        // Every image host failed (e.g. ImgBB rate-limited + Catbox blocked our
+        // egress IP). DO NOT throw the photo away — that loses it forever and is
+        // why hundreds of listings ended up showing only the promo placeholder.
+        // Instead, keep image_url clean (placeholder, so /api/listings payload
+        // stays lean per .cursorrules §3) but stash the original base64 in a
+        // separate field so /api/admin/convert_base64 can re-host it later once a
+        // host is reachable. Cap the stash to a sane size to avoid 1MB-doc limits.
+        data.image_url = '/promo_banner.webp';
+        if (originalBase64.length <= 900000) {
+          data.pending_image_b64 = originalBase64;
+          console.warn('⚠️ Image hosting failed on ingest; stored original in pending_image_b64 for later re-hosting.');
+        } else {
+          console.warn('⚠️ Image hosting failed on ingest and base64 too large to stash; photo dropped.');
+        }
+      }
     }
 
     // Add timestamp and ID
@@ -315,7 +372,10 @@ export async function GET(request: Request) {
       }
       const doc = await db.collection('listings').doc(id).get();
       if (!doc.exists) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-      return NextResponse.json({ id: doc.id, ...doc.data() });
+      // Never expose the pending base64 stash to clients (it's an internal field
+      // used only for later re-hosting; it would bloat the single-listing payload).
+      const { pending_image_b64, ...docData } = doc.data() as any;
+      return NextResponse.json({ id: doc.id, ...docData });
     }
     const cursorId = searchParams.get('cursor');
     const limitStr = searchParams.get('limit') || '50';
